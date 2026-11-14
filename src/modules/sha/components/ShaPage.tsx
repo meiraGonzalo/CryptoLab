@@ -42,7 +42,7 @@ const VIEWS: Record<ShaStepKind, (props: ShaViewProps) => JSX.Element> = {
 function describePosition(step: ShaStep, trace: ShaTrace): string {
   if (step.blockIndex < 0) return step.kind === 'digest' ? 'Resultado final' : 'Preparación del mensaje';
   const block = `Bloque ${step.blockIndex + 1} de ${trace.blocks.length}`;
-  return step.kind === 'round' ? `${block} · Ronda ${step.round} de ${trace.params.rounds - 1}` : `${block} · ${step.title}`;
+  return step.kind === 'round' ? `${block} · Ronda ${step.round} (0 a ${trace.params.rounds - 1})` : `${block} · ${step.title}`;
 }
 
 export default function ShaPage({ route }: { route: RouteId }) {

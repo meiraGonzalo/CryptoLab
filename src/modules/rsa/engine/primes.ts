@@ -5,8 +5,10 @@ import { modPow } from './math';
 const SMALL_PRIMES = [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n];
 
 /**
- * Test de primalidad de Miller–Rabin. Con estas 12 bases es determinista para
- * n < 3.3 · 10²⁴, rango que cubre todos los tamaños del modo educativo.
+ * Test de primalidad de Miller–Rabin con las 12 primeras bases primas. Es
+ * determinista para n < 3,18 · 10²³ (Sorenson y Webster, 2017), rango que cubre
+ * todos los primos que genera el modo educativo (hasta 32 bits). Para valores
+ * mayores ingresados manualmente, el resultado es probabilístico.
  */
 export function isProbablePrime(n: bigint): boolean {
   if (n < 2n) return false;
