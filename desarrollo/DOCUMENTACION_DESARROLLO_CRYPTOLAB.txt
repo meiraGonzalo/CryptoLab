@@ -1,0 +1,2721 @@
+================================================================================
+                 DOCUMENTACIÓN TÉCNICA DEL DESARROLLO DE CRIPTOLAB
+        Cómo se construyó, cómo funciona y por qué se hizo de esta manera
+================================================================================
+
+Guía de estudio y de defensa académica del proyecto.
+
+Nota sobre el nombre: en el código fuente y en la interfaz la aplicación se
+llama "CriptoLab" (paquete "criptolab" en package.json, título de index.html y
+logotipo de la barra lateral). En este documento se usa ese nombre; "CryptoLab"
+y "CriptoLab" se refieren al mismo proyecto.
+
+Nota sobre la fidelidad: todo lo que se afirma aquí se comprobó leyendo el
+código fuente del proyecto (carpeta src/ y archivos de configuración). Las
+pruebas automáticas se ejecutaron al preparar este documento: 33 de 33
+correctas. Cuando un motivo no está escrito en el código y se deduce de la
+implementación, se marca así:
+
+    [Interpretación razonable]  el propósito se deduce del código, pero no
+                                está escrito como decisión explícita.
+
+Cuando el motivo sí figura en un comentario del código o en el README, se
+marca así:
+
+    [Documentado en el código]
+
+
+--------------------------------------------------------------------------------
+ÍNDICE
+--------------------------------------------------------------------------------
+
+   1. Introducción al proyecto
+   2. Tecnologías utilizadas
+   3. Lenguajes y herramientas de desarrollo
+   4. Arquitectura y organización del proyecto
+   5. Construcción de la interfaz
+   6. Gestión de estados y flujo de información
+   7. Implementación de los algoritmos criptográficos
+        7.1 AES
+        7.2 RSA
+        7.3 SHA-256 (y SHA-512)
+   8. Diseño visual y experiencia de usuario
+   9. Procesamiento de datos y conversiones
+  10. Verificación y confiabilidad
+  11. Decisiones de diseño y justificación técnica
+  12. Limitaciones y posibles mejoras
+  13. Conclusión
+  Anexo A. Preguntas que podrían realizar durante la defensa
+  Anexo B. Mapa rápido de archivos
+
+
+================================================================================
+1. INTRODUCCIÓN AL PROYECTO
+================================================================================
+
+1.1 Qué es CriptoLab
+--------------------
+
+CriptoLab es una aplicación web educativa que muestra, paso a paso y con
+valores reales, cómo funcionan por dentro tres familias de algoritmos
+criptográficos:
+
+  - AES (cifrado simétrico): variantes de 128, 192 y 256 bits.
+  - RSA (cifrado asimétrico): generación de claves, cifrado y descifrado, más
+    un laboratorio con RSA-OAEP real.
+  - SHA-2 (funciones hash): SHA-256 y SHA-512, más una comparación de hashes
+    y una demostración del efecto avalancha.
+
+Además incluye seis herramientas auxiliares: conversión texto/hexadecimal,
+hexadecimal/binario, visualizador de bytes, generador de claves, generador de
+números aleatorios y comparador de resultados.
+
+La aplicación se ejecuta por completo en el navegador. No tiene servidor
+propio (backend) ni base de datos: todo cálculo ocurre en la computadora de
+quien la usa. [Documentado en el código: README, "La aplicación funciona por
+completo en el navegador: no hay backend ni base de datos".]
+
+1.2 Qué problema busca resolver
+-------------------------------
+
+Los algoritmos criptográficos se enseñan habitualmente con fórmulas, tablas y
+pseudocódigo. El problema es que un algoritmo como AES aplica decenas de
+transformaciones sobre 16 bytes, y SHA-256 ejecuta 64 rondas sobre ocho
+registros de 32 bits. Seguir eso con lápiz y papel es lento y propenso a
+errores, y una herramienta criptográfica común (por ejemplo, un programa que
+cifra archivos) solo muestra la entrada y la salida: el proceso intermedio
+queda oculto.
+
+CriptoLab intenta llenar ese hueco: ejecuta el algoritmo real y guarda cada
+estado intermedio para que el estudiante pueda recorrerlo hacia adelante y
+hacia atrás, ver qué cambió en cada operación y leer por qué ocurrió.
+
+1.3 Necesidad educativa y destinatarios
+---------------------------------------
+
+[Interpretación razonable, a partir del contenido de las pantallas y de los
+textos de explicación.] La aplicación está pensada para:
+
+  - Estudiantes de informática o sistemas que cursan materias de seguridad o
+    criptografía y necesitan entender qué hace cada paso de un algoritmo.
+  - Docentes que quieren proyectar en clase un ejemplo concreto y avanzar
+    operación por operación.
+  - Personas curiosas con conocimientos básicos, gracias al nivel de
+    explicación "Sencilla".
+
+Su objetivo principal es que el usuario comprenda el funcionamiento interno de
+los algoritmos, no proteger información. La propia aplicación lo advierte en
+la barra lateral: "Herramienta educativa. No la uses para proteger información
+real."
+
+1.4 Funcionalidades que ofrece
+------------------------------
+
+Tiene 18 pantallas (definidas en src/components/navigation/routes.ts),
+agrupadas en cinco secciones:
+
+  Inicio
+    - Presentación: introducción a la criptografía simétrica, asimétrica y a
+      las funciones hash, y accesos a los simuladores.
+
+  Criptografía simétrica
+    - AES-128, AES-192 y AES-256: cifrado y descifrado paso a paso, con una
+      pestaña aparte para la expansión de clave.
+
+  Criptografía asimétrica
+    - RSA (panorama general, diagrama de relaciones y laboratorio RSA-OAEP).
+    - Generación de claves (p, q, n, φ(n), e, d en ocho pasos).
+    - Cifrado (C = M^e mod n, con la traza de la exponenciación).
+    - Descifrado (M = C^d mod n).
+
+  Funciones hash
+    - SHA-256 y SHA-512 paso a paso.
+    - Comparación de hashes.
+    - Efecto avalancha.
+
+  Herramientas
+    - Texto ↔ hexadecimal, Hexadecimal ↔ binario, Visualizador de bytes,
+      Generador de claves, Números aleatorios, Comparador de resultados.
+
+1.5 Qué la diferencia de una herramienta criptográfica convencional
+-------------------------------------------------------------------
+
+Una herramienta convencional busca proteger datos: recibe un mensaje y una
+clave y entrega el resultado lo más rápido y seguro posible. CriptoLab busca
+lo contrario en cierto sentido: hace visible lo que una herramienta real
+oculta.
+
+  - Muestra los estados intermedios (la matriz de AES después de cada
+    operación, los registros A-H de SHA en cada ronda, cada multiplicación
+    de la exponenciación modular de RSA).
+  - Permite avanzar, retroceder, saltar de ronda y reproducir automáticamente.
+  - Acompaña cada paso con una explicación que cita los valores concretos.
+  - Distingue explícitamente entre "Implementación educativa" y "Web Crypto
+    API" mediante una insignia (componente ModeBadge).
+  - Comprueba sus propios resultados contra el motor criptográfico del
+    navegador.
+
+1.6 El enfoque de aprendizaje visual e interactivo
+--------------------------------------------------
+
+La idea central es que el estudiante no lea un algoritmo, sino que lo
+recorra. Para eso cada simulador combina cuatro elementos:
+
+  1. Una representación gráfica del dato que se transforma (matriz de 4 × 4
+     bytes en AES, tiras de bits y registros en SHA, tablas y diagramas en
+     RSA).
+  2. Controles tipo reproductor de video: paso anterior/siguiente, ronda
+     anterior/siguiente, reproducción automática con velocidad regulable,
+     reinicio y una barra de posición.
+  3. Un panel de explicación con tres preguntas: "¿Qué ocurre?", "¿Por qué?"
+     y, en el nivel técnico, "Detalle técnico".
+  4. Interacción directa con los datos: hacer clic en una celda de la matriz
+     para ver su sustitución en la S-Box, elegir una columna para ver el
+     cálculo de MixColumns, elegir un bloque RSA para ver su exponenciación.
+
+Un ejemplo: en la operación SubBytes de AES, el usuario ve la matriz antes y
+después, la tabla S-Box completa con la fila y la columna resaltadas, y la
+fórmula S(0x53) = 0xed calculada con el byte que seleccionó.
+
+  ┌─ Cómo explicarlo en una defensa ──────────────────────────────────────────
+  │ "CriptoLab es un laboratorio web para entender AES, RSA y SHA por dentro.
+  │ A diferencia de una herramienta de cifrado común, que solo muestra entrada
+  │ y salida, ejecuta el algoritmo real, guarda cada estado intermedio y
+  │ permite recorrerlo paso a paso con una explicación en cada operación.
+  │ Además verifica sus resultados contra la criptografía del navegador."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+2. TECNOLOGÍAS UTILIZADAS
+================================================================================
+
+Todas las tecnologías de este capítulo se verificaron en package.json, en
+node_modules (versiones realmente instaladas) y en su uso dentro de src/.
+
+  Tecnología          Versión instalada   ¿Se usa?   Dónde se ve
+  ------------------  ------------------  ---------  ---------------------------
+  JavaScript          (estándar ES2022)   Sí         Es lo que ejecuta el navegador
+  TypeScript          5.6.3               Sí         Todos los archivos .ts/.tsx
+  React               18.3.1              Sí         Toda la interfaz
+  Vite                5.4.21              Sí         vite.config.ts, scripts npm
+  Tailwind CSS        3.4.19              Sí         Clases en los .tsx
+  Framer Motion       11.18.2             Sí         Animaciones (motion.div)
+  Zustand             5.1.0               Sí         src/stores, modules/*/store
+  Lucide React        0.460.0             Sí         Íconos de todas las pantallas
+  KaTeX               0.16.47             Sí         MathFormula.tsx
+  SVG                 (estándar web)      Sí         Diagramas RSA, inicio, íconos
+  Web Crypto API      (API del navegador) Sí         services/crypto/*.ts
+  Vitest              2.1.9               Sí         *.test.ts (33 pruebas)
+  PostCSS/Autoprefixer 8.x / 10.x         Sí         postcss.config.js
+
+A continuación se analiza cada una con el mismo esquema: qué es, para qué
+sirve en general, qué hace en CriptoLab, por qué es apropiada, qué ventajas
+aporta y qué alternativas existían.
+
+2.1 JavaScript
+--------------
+
+  Qué es: el único lenguaje de programación que los navegadores web ejecutan
+  de forma nativa. Todo lo "dinámico" de una página (responder a un clic,
+  calcular algo, cambiar lo que se ve) se programa en JavaScript.
+
+  Para qué sirve: dar comportamiento a las páginas web; también se usa en
+  servidores (Node.js) y herramientas.
+
+  Función en CriptoLab: es el lenguaje que finalmente corre en el navegador.
+  El código se escribe en TypeScript (ver 2.2), pero se traduce a JavaScript
+  antes de ejecutarse. CriptoLab aprovecha dos capacidades modernas de
+  JavaScript:
+    - BigInt: enteros de tamaño arbitrario (se escriben con una "n" al final,
+      como 65537n). Se usan en RSA y en SHA-2.
+    - Uint8Array: arreglos de bytes, la representación natural de los datos
+      que procesan los algoritmos.
+
+  Por qué es apropiada: es obligatoria si se quiere que todo corra en el
+  navegador sin instalar nada.
+
+  Alternativas: compilar otro lenguaje a WebAssembly (C, Rust). Sería más
+  rápido, pero mucho más complejo de integrar con la interfaz, y la
+  velocidad no es un problema en una simulación didáctica.
+
+2.2 TypeScript
+--------------
+
+  Qué es: JavaScript con tipos. Permite declarar, por ejemplo, que una
+  variable es un número, un texto o un arreglo de 16 bytes, y un compilador
+  revisa que el código respete esas declaraciones antes de ejecutarlo.
+
+  Para qué sirve: detectar errores mientras se escribe el código, en lugar de
+  descubrirlos cuando el programa ya está funcionando.
+
+  Función en CriptoLab: todo el código fuente está en TypeScript (archivos
+  .ts para lógica y .tsx para componentes con interfaz). El archivo
+  tsconfig.json activa el modo estricto ("strict": true), que obliga a
+  manejar valores posiblemente nulos, y además "noUnusedLocals" y
+  "noUnusedParameters", que marcan código sobrante. El script de compilación
+  ("npm run build") ejecuta primero "tsc --noEmit", es decir, si hay un error
+  de tipos la aplicación no se compila.
+
+  Ejemplos reales de tipos del proyecto:
+    - AesVariant = 128 | 192 | 256  (solo esos tres valores son válidos).
+    - AesStep: describe todo lo que tiene un paso de AES (operación, ronda,
+      estado anterior, estado posterior, clave de ronda, explicación).
+    - RsaKeyResult: o bien { ok: true, key, ... } o bien { ok: false, errors }.
+      El compilador obliga a revisar "ok" antes de usar la clave.
+
+  Por qué es apropiada: en criptografía es fácil confundir un byte (number)
+  con un entero grande (bigint), o pasar 15 bytes donde se esperaban 16. Con
+  tipos, muchos de esos errores aparecen antes de ejecutar.
+  [Interpretación razonable.]
+
+  Alternativas: JavaScript puro (menos verificación), o JavaScript con
+  comentarios JSDoc (verificación parcial y más verbosa).
+
+2.3 React
+---------
+
+  Qué es: una biblioteca de JavaScript para construir interfaces de usuario a
+  partir de "componentes": piezas reutilizables que reciben datos y devuelven
+  lo que se debe mostrar.
+
+  Para qué sirve: describir cómo debe verse la pantalla según los datos, y
+  dejar que React se encargue de actualizarla cuando los datos cambian.
+
+  Función en CriptoLab: toda la interfaz está hecha con componentes React.
+  El punto de entrada (src/main.tsx) crea la raíz de React y dibuja el
+  componente App, que elige qué página mostrar según la ruta actual.
+  Componentes como StateMatrix (matriz 4 × 4), ByteCell (un byte),
+  SimulationControls (barra de controles) o ExplanationPanel (panel de
+  explicación) se reutilizan en muchas pantallas.
+
+  Por qué es apropiada: la interfaz de CriptoLab cambia constantemente (cada
+  paso de la simulación muestra otros valores) y repite las mismas piezas con
+  datos distintos. El modelo de React (la pantalla es una función de los
+  datos) encaja exactamente con eso. [Interpretación razonable.]
+
+  Ventajas: reutilización, actualización automática de la pantalla, enorme
+  documentación y ecosistema (KaTeX, Framer Motion, Zustand y Lucide tienen
+  integración directa con React).
+
+  Alternativas: Vue o Svelte (capacidades equivalentes; la elección es en
+  buena parte de preferencia), Angular (más pesado y con más estructura
+  obligatoria) o JavaScript sin biblioteca (habría que actualizar cada
+  elemento de la pantalla a mano).
+
+2.4 Vite
+--------
+
+  Qué es: una herramienta de construcción ("build tool") y servidor de
+  desarrollo.
+
+  Para qué sirve: durante el desarrollo, sirve la aplicación en
+  http://localhost:5173 y la recarga al instante cuando se modifica un
+  archivo. Para publicar, "empaqueta" todo el código en archivos optimizados
+  (carpeta dist/).
+
+  Función en CriptoLab (vite.config.ts):
+    - Usa el complemento @vitejs/plugin-react para entender JSX/TSX.
+    - Define el alias "@" que apunta a src/, de modo que el código escribe
+      import { cn } from '@/utils/cn' en lugar de rutas relativas largas.
+    - Configura Vitest (las pruebas) dentro del mismo archivo.
+    - Divide automáticamente el código en partes cuando App.tsx usa lazy()
+      para cargar cada página bajo demanda.
+
+  Por qué es apropiada: arranque casi inmediato y configuración mínima (el
+  archivo tiene menos de 20 líneas).
+
+  Alternativas: Webpack (más configurable, pero con configuración más larga
+  y arranque más lento), Create React App (discontinuado), Parcel.
+
+2.5 Tailwind CSS
+----------------
+
+  Qué es: un sistema de estilos basado en "clases utilitarias". En lugar de
+  escribir una hoja de estilos con reglas como ".boton { padding: 8px }", se
+  escriben clases cortas directamente en el elemento: "px-4 py-2 rounded-lg".
+
+  Para qué sirve: dar estilo visual (colores, tamaños, espaciados,
+  disposición) sin mantener grandes archivos CSS.
+
+  Función en CriptoLab:
+    - tailwind.config.js define la paleta propia: los fondos oscuros "ink"
+      (de ink-950 a ink-500) y los colores de acento "accent" con significado:
+      data (datos), key (clave), sub (sustitución), shift (desplazamiento),
+      mix (mezcla), xor, result (resultado), private (clave privada).
+    - También define las fuentes (Inter para texto y JetBrains Mono para
+      valores hexadecimales) y dos sombras ("panel" y "glow").
+    - src/styles/index.css agrega unas pocas clases propias (.panel,
+      .panel-inset, .mono, .label-caps) y el fondo general.
+    - src/components/common/tones.ts traduce cada "tono" semántico a clases
+      de Tailwind, para que el color de la clave sea el mismo en toda la
+      aplicación.
+
+  Diferencia con una biblioteca de componentes: Tailwind NO aporta botones,
+  tarjetas ni menús ya hechos; solo aporta clases para dar estilo. Los
+  componentes visuales (Button, Card, Badge, Tabs, etc.) se programaron en el
+  propio proyecto (src/components/common/). Una biblioteca de componentes
+  (como Material UI o Bootstrap) entrega piezas terminadas con un estilo
+  propio.
+
+  Por qué es apropiada: la aplicación necesita una estética oscura y
+  coherente, con colores que transmiten significado. Tailwind permite
+  definir esos colores una vez y aplicarlos en todas partes. [Interpretación
+  razonable.]
+
+  Alternativas: CSS tradicional o CSS Modules (más archivos que mantener),
+  Material UI o Chakra UI (componentes listos, pero con una estética difícil
+  de adaptar a matrices de bytes y tiras de bits).
+
+  Herramientas asociadas: PostCSS y Autoprefixer (postcss.config.js) procesan
+  el CSS que genera Tailwind y agregan, cuando hace falta, variantes para
+  navegadores antiguos.
+
+2.6 Framer Motion (Motion)
+--------------------------
+
+  Qué es: una biblioteca de animaciones para React. El proyecto instala el
+  paquete "framer-motion" (versión 11.18.2) e importa desde 'framer-motion'.
+  La misma biblioteca se distribuye hoy también con el nombre "Motion".
+
+  Para qué sirve: animar elementos declarando el estado inicial y final
+  ("aparecer desde abajo", "moverse a la nueva posición"), sin programar
+  cada cuadro de la animación.
+
+  Función en CriptoLab:
+    - ShiftRowsView: cada celda es un motion.div con la propiedad "layout";
+      cuando cambia el orden de la fila, la biblioteca anima el
+      desplazamiento de la celda hasta su nueva posición. Así se ve cómo la
+      fila 1 se corre una posición, la fila 2 dos y la fila 3 tres.
+    - ByteCell: cuando un valor cambia, la celda aparece con un pequeño
+      efecto de escala ("pulse").
+    - ExplanationPanel y AesStepView: el contenido nuevo entra con un
+      desvanecimiento breve (0,18 a 0,2 segundos).
+    - AppShell: el menú lateral en celulares se desliza desde la izquierda.
+    - App.tsx envuelve todo en <MotionConfig reducedMotion="user">: si el
+      usuario configuró su sistema operativo para reducir el movimiento, las
+      animaciones se reducen.
+
+  Por qué es apropiada: algunas operaciones (sobre todo ShiftRows) se
+  entienden mejor viendo el movimiento que comparando dos matrices
+  estáticas. [Interpretación razonable.]
+
+  Alternativas: transiciones CSS puras (difíciles de usar para "mover una
+  celda a otra posición de la grilla"), o la biblioteca GSAP.
+
+2.7 Zustand
+-----------
+
+  Qué es: una biblioteca pequeña para "gestión de estado": guardar datos que
+  varias partes de la aplicación necesitan compartir.
+
+  Para qué sirve: evitar pasar datos de componente en componente a través de
+  muchos niveles, y tener un lugar único donde se modifican.
+
+  Función en CriptoLab: hay siete "stores" (almacenes de estado):
+    - createSimulationStore.ts: una fábrica genérica de reproductores de
+      simulación, usada para AES (useAesPlayback), SHA (useShaPlayback) y la
+      generación de claves RSA (useKeygenPlayback).
+    - aesStore.ts: configuración de AES (modo, mensaje, claves, relleno),
+      simulación calculada y resultado de la verificación.
+    - shaStore.ts: entrada de SHA, traza calculada y verificación; también
+      el estado de las páginas de comparación y avalancha.
+    - rsaStore.ts: p, q, e, la clave calculada y los mensajes.
+    - navigationStore.ts: la pantalla actual.
+    - uiStore.ts: el nivel de explicación (Sencilla/Técnica) y si el menú
+      móvil está abierto.
+    - toolsStore.ts: lo que el usuario escribió en las herramientas, para que
+      no se pierda al cambiar de pantalla.
+  El capítulo 6 lo explica en detalle.
+
+  Por qué es apropiada: es mínima (un store se define en pocas líneas) y no
+  requiere envolver la aplicación en "proveedores". [Interpretación
+  razonable.]
+
+  Alternativas: Context de React (incluido en React, pero vuelve a dibujar
+  todos los componentes que lo usan ante cualquier cambio), Redux Toolkit
+  (más estructura y código para una aplicación de este tamaño), Jotai o
+  MobX.
+
+2.8 Lucide React
+----------------
+
+  Qué es: una colección de íconos (dibujos simples como un candado, una
+  llave, una flecha) listos para usar como componentes React.
+
+  Función en CriptoLab: todos los íconos de la interfaz. Por ejemplo, en
+  routes.ts cada pantalla tiene su ícono (Lock para cifrado, LockOpen para
+  descifrado, Hash para SHA, KeyRound para generación de claves), y
+  SimulationControls usa Play, Pause, ChevronLeft, ChevronsRight, etc.
+
+  Por qué es apropiada: los íconos son SVG (escalan sin perder nitidez),
+  tienen un estilo uniforme y se importan de a uno, así que solo se incluyen
+  los que se usan.
+
+  Alternativas: Font Awesome, Heroicons, Material Icons, o dibujar los
+  íconos a mano.
+
+2.9 KaTeX
+---------
+
+  Qué es: una biblioteca que convierte fórmulas escritas en notación TeX
+  (la notación matemática estándar de los documentos científicos) en
+  fórmulas bien tipografiadas dentro de una página web.
+
+  Función en CriptoLab: el componente MathFormula
+  (src/components/common/MathFormula.tsx) recibe una fórmula en TeX y la
+  convierte en HTML con katex.renderToString. Se usa, por ejemplo, para
+  mostrar "C = M^{e} mod n", "φ(n) = (p−1)(q−1) = 60 × 52 = 3120" con los
+  valores reales, o "S(0x53) = 0xed" en SubBytes. Las fórmulas de la
+  generación de claves RSA se arman con los números calculados
+  (keygenSteps.ts, campo "formula").
+
+  Detalles de la configuración: throwOnError: false (una fórmula mal escrita
+  no rompe la página) y output: 'htmlAndMathml' (además del HTML visible
+  genera MathML, que pueden leer los lectores de pantalla).
+
+  Por qué es apropiada: la criptografía es matemática; mostrar las fórmulas
+  con notación correcta las hace legibles. KaTeX dibuja al instante, sin
+  esperar.
+
+  Alternativas: MathJax (más completo, pero más pesado y lento), o escribir
+  las fórmulas como texto plano (menos legibles).
+
+2.10 SVG
+--------
+
+  Qué es: Scalable Vector Graphics, un formato de dibujo vectorial que el
+  navegador entiende directamente. Un dibujo SVG se describe con figuras
+  (rectángulos, líneas, texto) y se ve nítido a cualquier tamaño.
+
+  Función en CriptoLab:
+    - RelationshipDiagram.tsx dibuja en SVG el diagrama de relaciones de RSA:
+      cajas para p, q, n, φ(n), e y d con sus valores y flechas que muestran
+      de qué depende cada uno.
+    - AvalanchePage.tsx, HomePage.tsx y RandomNumberTool.tsx también incluyen
+      elementos SVG.
+    - Los íconos de Lucide son SVG.
+
+  Por qué es apropiada: React puede generar SVG igual que HTML, de modo que
+  el diagrama se dibuja con los valores reales de la clave actual.
+
+  Alternativas: Canvas (dibujo por píxeles; más difícil de hacer accesible y
+  de combinar con texto), imágenes estáticas (no reflejarían los valores
+  actuales) o bibliotecas de gráficos como D3 (innecesarias para un diagrama
+  fijo).
+
+2.11 Web Crypto API
+-------------------
+
+  Qué es: una interfaz de programación incluida en los navegadores modernos
+  que ofrece operaciones criptográficas reales (cifrar, descifrar, calcular
+  hashes, generar claves y números aleatorios). La implementa el propio
+  navegador, no CriptoLab. Solo está disponible en "contextos seguros"
+  (páginas servidas por HTTPS o desde localhost).
+
+  Función en CriptoLab: todo su uso está concentrado en dos archivos de
+  src/services/crypto/:
+    - random.ts usa crypto.getRandomValues para obtener bytes aleatorios
+      seguros (claves AES de ejemplo, primos RSA aleatorios, generadores de
+      las herramientas).
+    - webCrypto.ts usa crypto.subtle para:
+        · webCryptoDigest: calcular SHA-256/SHA-512 y comparar con la
+          implementación propia.
+        · webCryptoAesEncryptBlocks: cifrar bloques AES y comparar.
+        · generateRsaOaepKeyPair, rsaOaepEncrypt, rsaOaepDecrypt: el
+          laboratorio de RSA-OAEP real.
+
+  Muy importante para la defensa: Web Crypto NO es la que dibuja los pasos.
+  Los pasos los calcula el código propio de CriptoLab. Web Crypto se usa
+  como referencia independiente para comprobar que el resultado final es
+  correcto, y para el modo RSA real.
+
+  Por qué es apropiada: es la criptografía del navegador, mantenida y
+  revisada por sus fabricantes; no requiere instalar bibliotecas.
+
+  Alternativas: bibliotecas JavaScript como CryptoJS o node-forge (código de
+  terceros dentro de la aplicación, sin la garantía de una implementación
+  nativa).
+
+2.12 Otras dependencias detectadas
+----------------------------------
+
+  - Vitest 2.1.9: ejecuta las pruebas automáticas (archivos *.test.ts).
+    Comparte la configuración de Vite.
+  - @types/react, @types/react-dom, @types/katex, @types/node: descripciones
+    de tipos para que TypeScript conozca esas bibliotecas.
+  - @vitejs/plugin-react: complemento de Vite para React.
+  - Fuentes Inter y JetBrains Mono: se cargan desde Google Fonts (index.html).
+    No son dependencias de npm; si no hay conexión, el navegador usa las
+    fuentes alternativas declaradas.
+  - npm: el administrador de dependencias (existe package-lock.json).
+
+No se detectaron otras bibliotecas: no hay biblioteca de rutas (React
+Router), ni de componentes visuales, ni de criptografía de terceros.
+
+  ┌─ Cómo explicarlo en una defensa: ¿por qué React? ─────────────────────────
+  │ "Porque la interfaz es una función de los datos: en cada paso cambian los
+  │ valores, pero las piezas son las mismas, como la matriz de 4 × 4 o el
+  │ panel de explicación. Con React esas piezas se escriben una vez como
+  │ componentes y se actualizan solas cuando cambia el paso."
+  └───────────────────────────────────────────────────────────────────────────
+
+  ┌─ Cómo explicarlo en una defensa: ¿por qué Vite? ──────────────────────────
+  │ "Vite es la herramienta que sirve la aplicación mientras se desarrolla y
+  │ la empaqueta para publicarla. Lo elegimos por velocidad y simplicidad: la
+  │ configuración ocupa menos de 20 líneas y los cambios se ven al instante."
+  └───────────────────────────────────────────────────────────────────────────
+
+  ┌─ Cómo explicarlo en una defensa: ¿por qué Web Crypto? ────────────────────
+  │ "La usamos como árbitro. Nuestro código calcula los pasos para poder
+  │ mostrarlos; Web Crypto, que es la criptografía del propio navegador,
+  │ calcula el resultado final por su cuenta. Si coinciden, la aplicación lo
+  │ indica. También la usamos para el modo RSA-OAEP real, porque una
+  │ implementación didáctica no debe usarse para cifrar de verdad."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+3. LENGUAJES Y HERRAMIENTAS DE DESARROLLO
+================================================================================
+
+3.1 Clasificación de lo que se usó
+----------------------------------
+
+Es común confundir estas categorías. Esta tabla ubica cada elemento del
+proyecto en la suya:
+
+  Categoría                    Qué es                         En CriptoLab
+  ---------------------------  -----------------------------  ------------------------
+  Lenguaje de programación     Expresa lógica: cálculos,      TypeScript (se traduce
+                               decisiones, repeticiones.      a JavaScript)
+  Lenguaje de marcado          Describe la estructura de un   HTML (index.html) y JSX
+                               documento: títulos, botones.   dentro de los .tsx; SVG
+  Lenguaje de estilos          Describe el aspecto visual.    CSS, generado
+                                                              principalmente por
+                                                              Tailwind
+  Biblioteca                   Código que el programa llama   React, Zustand, KaTeX,
+                               cuando lo necesita.            Framer Motion, Lucide
+  Framework                    Estructura que dicta cómo se   Tailwind se presenta
+                               organiza el programa y llama   como "framework CSS";
+                               al código propio.              no hay framework de
+                                                              aplicación (ver nota)
+  Herramienta de construcción  Traduce y empaqueta el código. Vite (+ tsc, PostCSS)
+  Herramienta de pruebas       Ejecuta pruebas automáticas.   Vitest
+  Administrador de             Descarga e instala las         npm
+  dependencias                 bibliotecas.
+  API del navegador            Funciones que trae el          Web Crypto, TextEncoder/
+                               navegador.                     TextDecoder, btoa/atob,
+                                                              Clipboard, location.hash
+
+  Nota: React se describe a sí mismo como biblioteca, no como framework. La
+  diferencia práctica es que React se ocupa solo de la interfaz; cosas como
+  la navegación entre pantallas las resolvió el propio proyecto
+  (navigationStore.ts). Un framework como Next.js o Angular trae esas
+  piezas ya decididas.
+
+3.2 JavaScript y TypeScript
+---------------------------
+
+TypeScript es un "superconjunto" de JavaScript: todo JavaScript válido es
+TypeScript válido, y TypeScript agrega anotaciones de tipo. El navegador no
+entiende TypeScript; antes de ejecutar, las anotaciones se eliminan y queda
+JavaScript.
+
+Analogía: TypeScript es como escribir un plano con medidas y que un
+inspector revise que las piezas encajan antes de construir. Al construir (en
+el navegador) las anotaciones desaparecen, pero los errores ya se
+corrigieron.
+
+Ejemplo del proyecto (src/modules/aes/types/index.ts):
+
+    export type AesVariant = 128 | 192 | 256;
+
+Si alguna parte del código intentara usar AES-512, el compilador lo
+rechazaría antes de ejecutar.
+
+3.3 React y Vite
+----------------
+
+Se complementan pero hacen cosas distintas:
+  - React define CÓMO se arma la interfaz (componentes, actualización).
+  - Vite PREPARA el código para que el navegador lo pueda ejecutar
+    (traducir TypeScript y JSX, unir archivos, optimizar) y lo sirve durante
+    el desarrollo.
+
+Analogía: React es el idioma en que está escrita la obra; Vite es la
+imprenta que la convierte en un libro listo para leer.
+
+3.4 JSX
+-------
+
+Los archivos .tsx mezclan TypeScript con una sintaxis parecida a HTML
+llamada JSX. Por ejemplo, en AesPage.tsx:
+
+    <ExplanationPanel stepKey={step.id} title={step.title}
+                      explanation={step.explanation} />
+
+Esto significa "mostrar el componente ExplanationPanel con estos datos". No
+es HTML real: Vite lo traduce a llamadas de funciones de React.
+
+3.5 Tailwind CSS y una biblioteca de componentes
+------------------------------------------------
+
+  - Tailwind entrega "ladrillos de estilo" (clases como bg-ink-800,
+    rounded-xl, text-sm). Los componentes se construyen con ellos.
+  - Una biblioteca de componentes (Material UI, Bootstrap) entrega
+    "habitaciones terminadas": botones, diálogos, tablas con estilo propio.
+
+CriptoLab eligió el primer camino y programó sus propios componentes en
+src/components/common/ (Button, Card, Badge, Callout, Field, Tabs,
+SegmentedControl, ValueBox, CopyButton, etc.).
+
+3.6 Cómo se complementan todas
+------------------------------
+
+  1. npm descarga React, Zustand, KaTeX, etc. en node_modules/.
+  2. El desarrollador escribe TypeScript + JSX + clases de Tailwind.
+  3. tsc (el compilador de TypeScript) revisa los tipos.
+  4. Vite traduce todo a JavaScript, PostCSS/Tailwind generan el CSS, y se
+     produce la carpeta dist/ (o se sirve en localhost:5173 en desarrollo).
+  5. El navegador ejecuta el JavaScript: React dibuja la interfaz, Zustand
+     guarda el estado, KaTeX dibuja las fórmulas, Framer Motion anima, y los
+     motores criptográficos propios calculan.
+  6. Para verificar, el código llama a la Web Crypto API del navegador.
+  7. Vitest ejecuta las pruebas de los motores (npm test) sin navegador.
+
+Scripts disponibles (package.json):
+
+  npm run dev        servidor de desarrollo (Vite)
+  npm run build      verificación de tipos (tsc) + compilación (vite build)
+  npm run preview    sirve la compilación de producción
+  npm run typecheck  solo verificación de tipos
+  npm test           pruebas automáticas (vitest run)
+
+  ┌─ Cómo explicarlo en una defensa: JavaScript vs. TypeScript ───────────────
+  │ "TypeScript es JavaScript con tipos. El navegador ejecuta JavaScript,
+  │ pero nosotros escribimos TypeScript para que el compilador detecte
+  │ errores antes de ejecutar, por ejemplo usar un entero grande donde se
+  │ esperaba un byte. Antes de llegar al navegador los tipos se eliminan."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+4. ARQUITECTURA Y ORGANIZACIÓN DEL PROYECTO
+================================================================================
+
+4.1 Estructura general de directorios
+-------------------------------------
+
+  CriptoAPP/
+  ├── index.html             Página única que carga la aplicación
+  ├── package.json           Dependencias y scripts
+  ├── package-lock.json      Versiones exactas instaladas (npm)
+  ├── vite.config.ts         Configuración de Vite y de Vitest
+  ├── tsconfig.json          Configuración de TypeScript (modo estricto)
+  ├── tailwind.config.js     Paleta, fuentes y sombras
+  ├── postcss.config.js      Tailwind + Autoprefixer
+  ├── README.md              Descripción, instalación, arquitectura
+  ├── public/favicon.svg     Ícono de la pestaña
+  ├── scripts/deck-values.ts Script auxiliar que extrae valores reales de los
+  │                          motores (para material de presentación; no forma
+  │                          parte de la aplicación)
+  ├── dist/                  Resultado de "npm run build"
+  └── src/                   Código fuente (≈ 8 800 líneas en 105 archivos)
+      ├── main.tsx           Punto de entrada
+      ├── App.tsx            Selección de página, carga diferida, errores
+      ├── components/
+      │   ├── common/        Piezas de interfaz genéricas (Button, Card…)
+      │   ├── controls/      SimulationControls
+      │   ├── layout/        AppShell, Sidebar, PageHeader
+      │   ├── navigation/    routes.ts (las 18 pantallas)
+      │   └── visualizations/ ByteCell, StateMatrix, ByteSequence, BitStrip,
+      │                      Legend, OperatorSymbol
+      ├── hooks/             useAutoPlay, useKeyboardStepping, useClipboard
+      ├── modules/
+      │   ├── aes/  engine/ components/ store/ types/
+      │   ├── rsa/  engine/ components/ store/ types/
+      │   └── sha/  engine/ components/ store/ types/
+      ├── pages/             HomePage y tools/ (las 6 herramientas)
+      ├── services/crypto/   random.ts y webCrypto.ts
+      ├── stores/            Stores compartidos (simulación, navegación, UI,
+      │                      herramientas)
+      ├── styles/index.css   Estilos base
+      ├── types/simulation.ts Contrato común de un paso de simulación
+      └── utils/             bytes.ts (conversiones) y cn.ts
+
+4.2 Responsabilidad de cada carpeta
+-----------------------------------
+
+  components/    Lo que se ve y se reutiliza en varias pantallas. No contiene
+                 lógica criptográfica.
+  hooks/         Comportamientos reutilizables de React (reproducción
+                 automática, atajos de teclado, copiar al portapapeles).
+  modules/       Un módulo por algoritmo. Cada uno tiene cuatro subcarpetas:
+                   engine/      la lógica criptográfica pura y sus pruebas
+                   store/       el estado de ese módulo (Zustand)
+                   components/  las pantallas y vistas de ese algoritmo
+                   types/       las definiciones de tipos del módulo
+  pages/         Pantallas que no pertenecen a un algoritmo (inicio,
+                 herramientas).
+  services/      El único lugar que habla con la Web Crypto API del
+                 navegador.
+  stores/        Estado compartido entre módulos.
+  types/         El contrato común de un "paso" (SimulationStep).
+  utils/         Funciones puras de conversión de datos.
+
+4.3 Separación entre interfaz y lógica
+--------------------------------------
+
+Es la decisión arquitectónica más importante del proyecto. El README la
+describe en cuatro capas [Documentado en el código]:
+
+  1. Lógica criptográfica (modules/*/engine): funciones puras y tipadas, sin
+     dependencias de React. "Pura" significa que, para la misma entrada,
+     siempre devuelven el mismo resultado y no modifican nada externo.
+  2. Generación de estados intermedios: cada operación produce el estado
+     anterior, los parámetros, el estado posterior y una explicación.
+  3. Progreso de la simulación (stores/createSimulationStore.ts): los pasos
+     se calculan una sola vez; avanzar o retroceder solo cambia un índice.
+  4. Representación visual (components): los componentes leen los pasos y los
+     dibujan; no contienen cálculos criptográficos.
+
+Prueba concreta de esta separación: los archivos de engine/ no importan nada
+de React. Las pruebas (aes.test.ts, rsa.test.ts, sha.test.ts) se ejecutan en
+un entorno "node" (vite.config.ts: environment: 'node'), es decir, sin
+navegador ni interfaz.
+
+Analogía: el motor es la calculadora; los componentes son la pantalla. La
+pantalla nunca hace cuentas: solo muestra lo que la calculadora ya resolvió.
+
+4.4 Organización de los algoritmos
+----------------------------------
+
+  modules/aes/engine/
+    galoisField.ts       Aritmética en GF(2^8): xtime, gfMultiply,
+                         traceGfMultiply, gfInverse
+    constants.ts         S-Box (calculada), S-Box inversa, Rcon, matrices de
+                         MixColumns
+    transformations.ts   SubBytes, ShiftRows, MixColumns, AddRoundKey y sus
+                         inversas
+    keyExpansion.ts      Expansión de clave con registro de cada palabra
+    cipher.ts            Cifrado/descifrado directo de un bloque; PKCS#7
+    simulation.ts        buildAesSimulation: ejecuta y registra cada paso
+    explanations.ts      Textos de explicación con valores concretos
+    testVectors.ts       Vectores oficiales de FIPS-197
+    aes.test.ts          17 pruebas
+
+  modules/rsa/engine/
+    math.ts              mod, gcd, Euclides extendido con traza, modPow,
+                         traceModPow
+    primes.ts            Miller–Rabin, rangos de primos, primo aleatorio
+    keygen.ts            Validación y construcción de la clave
+    keygenSteps.ts       Los 8 pasos de la generación de claves
+    messages.ts          Conversión mensaje ↔ números, cifrado/descifrado
+    rsa.test.ts          8 pruebas
+
+  modules/sha/engine/
+    constants.ts         Raíz entera, primos, derivación de constantes,
+                         parámetros de SHA-256 y SHA-512
+    sha2.ts              Motor SHA-2 genérico con traza (traceSha)
+    steps.ts             Lista de pasos con explicaciones
+    sha.test.ts          8 pruebas
+
+4.5 Reutilización de código
+---------------------------
+
+  - Un único store de reproducción (createSimulationStore) sirve para tres
+    simuladores distintos, porque todos los pasos cumplen el mismo contrato
+    mínimo (SimulationStep: id, groupKey, title, explanation).
+  - Un único componente SimulationControls y dos hooks (useAutoPlay,
+    useKeyboardStepping) funcionan con cualquiera de esos stores.
+  - Un único motor SHA-2 (traceSha) calcula SHA-256 y SHA-512: lo único que
+    cambia son los parámetros (SHA_PARAMETERS).
+  - Una única página AesPage sirve para las tres variantes de AES: la
+    variante se lee de la ruta ('aes-128' → 128).
+  - Una única página ShaPage sirve para SHA-256 y SHA-512.
+  - Las conversiones de datos (utils/bytes.ts) se usan en todos los módulos y
+    herramientas.
+
+4.6 Recorrido desde que el usuario abre la aplicación
+-----------------------------------------------------
+
+  1. El navegador descarga index.html, que contiene un <div id="root"> vacío
+     y un <script> que carga src/main.tsx.
+  2. main.tsx importa los estilos de KaTeX y de la aplicación, y le pide a
+     React que dibuje <App /> dentro de #root (en modo StrictMode, que en
+     desarrollo ayuda a detectar problemas).
+  3. App.tsx lee la ruta actual desde navigationStore. Ese store, al crearse,
+     lee el fragmento de la URL (por ejemplo "#/aes-128"); si no hay uno
+     válido, usa 'home'.
+  4. App busca en la tabla PAGES qué componente corresponde a esa ruta. Las
+     páginas se cargan con lazy(): el código de cada página se descarga
+     recién cuando se necesita. Mientras tanto, Suspense muestra un
+     indicador de carga.
+  5. La página se dibuja dentro de AppShell (barra lateral, encabezado móvil
+     y área principal) y de un ErrorBoundary, que captura errores
+     inesperados y muestra un mensaje con un botón "Reintentar".
+  6. El usuario elige "AES-128" en la barra lateral. Sidebar llama a
+     navigate('aes-128'): se cambia la URL a "#/aes-128" y se actualiza el
+     store. App vuelve a dibujarse con AesPage.
+  7. En AesPage el usuario escribe un mensaje, elige o genera una clave y
+     pulsa iniciar. El store de AES valida, ejecuta el motor, guarda todos
+     los pasos y lanza la verificación con Web Crypto (detalle en el
+     capítulo 6).
+  8. El usuario recorre los pasos con los controles o el teclado; cada
+     cambio de índice hace que React vuelva a dibujar la vista del paso
+     actual.
+
+Si el usuario usa el botón "Atrás" del navegador, cambia el fragmento de la
+URL; App escucha el evento "hashchange" y sincroniza el store, por lo que la
+pantalla anterior vuelve a aparecer.
+
+  ┌─ Cómo explicarlo en una defensa: ¿por qué separar lógica e interfaz? ─────
+  │ "Porque son problemas distintos. Los algoritmos están en carpetas engine,
+  │ sin nada de React; son funciones puras que se prueban solas contra los
+  │ vectores oficiales. La interfaz solo recorre los pasos que el motor ya
+  │ calculó. Así, si un valor está mal sabemos que el problema está en el
+  │ motor, y si se ve mal, en la interfaz. Y la interfaz nunca puede
+  │ 'inventar' un valor."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+5. CONSTRUCCIÓN DE LA INTERFAZ
+================================================================================
+
+5.1 Qué es un componente en React
+---------------------------------
+
+Un componente es una función que recibe datos (llamados "props", de
+properties) y devuelve la descripción de lo que se debe mostrar.
+
+Analogía: un componente es como un sello. El sello ByteCell siempre dibuja
+una celda con un byte en hexadecimal; lo que cambia en cada uso es el valor y
+el color que se le pasa.
+
+Ejemplo real: ByteCell (src/components/visualizations/ByteCell.tsx) recibe:
+  value    el byte (0 a 255)
+  tone     el color semántico (data, key, sub, etc.)
+  size     sm, md o lg
+  selected si está seleccionado (se dibuja un anillo alrededor)
+  onSelect qué hacer al hacer clic (si se pasa, la celda se vuelve botón)
+  pulse    si debe animar su aparición
+Y muestra el byte en hexadecimal; al pasar el mouse, un texto emergente
+indica sus tres representaciones: "0x53 · 83 · 01010011".
+
+5.2 Cómo se divide la interfaz
+------------------------------
+
+La interfaz se arma por capas, de lo general a lo particular. Ejemplo de la
+pantalla de AES:
+
+  App
+  └── AppShell (barra lateral + área principal)
+      └── AesPage
+          ├── PageHeader (título, descripción, insignias)
+          ├── Tabs (Simulación | Expansión de clave)
+          ├── AesConfigPanel (modo, mensaje, clave, relleno, botón iniciar)
+          ├── SimulationControls (reproductor)
+          ├── AesStepView (vista del paso actual)
+          │   └── según la operación: SubBytesView, ShiftRowsView,
+          │       MixColumnsView, AddRoundKeyView, MessageBytesView,
+          │       BlockSplitView, LoadStateView u OutputView
+          │       └── StateMatrix → 16 × ByteCell
+          ├── ExplanationPanel (¿Qué ocurre? ¿Por qué? Detalle técnico)
+          ├── RoundProgress (fichas de rondas para saltar)
+          └── AesResultPanel (resultado en hex, Base64, texto y verificación)
+
+AesStepView elige la vista con una tabla (VIEWS) que asocia cada operación a
+un componente. Así, agregar una vista nueva no exige tocar las demás.
+
+5.3 Reutilización de componentes
+--------------------------------
+
+  Componente           Archivo                           Dónde se reutiliza
+  -------------------  --------------------------------  -----------------------------
+  ByteCell             visualizations/ByteCell.tsx       AES, herramientas (texto/hex,
+                                                         bytes, claves, comparador)
+  StateMatrix          visualizations/StateMatrix.tsx    Todas las vistas de AES y las
+                                                         claves de ronda
+  BitStrip             visualizations/BitStrip.tsx       Rondas de SHA (Ch, Maj, Σ),
+                                                         MixColumns (xtime)
+  SimulationControls   controls/SimulationControls.tsx   AES, SHA, generación RSA
+  ExplanationPanel     common/ExplanationPanel.tsx       AES, SHA, generación RSA
+  MathFormula          common/MathFormula.tsx            RSA, SubBytes, MixColumns…
+  ValueBox             common/ValueBox.tsx               Resultados con botón copiar
+  Callout              common/Callout.tsx                Advertencias, errores, éxito
+  ModeBadge            common/ModeBadge.tsx              "Implementación educativa" o
+                                                         "Web Crypto API"
+
+5.4 Cómo se administran los datos que se muestran
+-------------------------------------------------
+
+Hay tres lugares donde viven los datos:
+
+  1. Props: lo que un componente recibe de su "padre". Ejemplo: AesStepView
+     recibe el paso actual (step) y la simulación completa.
+  2. Estado local (useState): datos que solo le importan a un componente.
+     Ejemplo: en SubBytesView, qué celda seleccionó el usuario
+     (const [selected, setSelected] = useState(0)). En MixColumnsView, qué
+     columna y qué fila de salida se están examinando.
+  3. Estado global (Zustand): datos que comparten varios componentes o
+     pantallas. Ejemplo: la clave RSA, que usan las páginas de generación,
+     cifrado y descifrado.
+
+También se usan valores derivados con useMemo, que recalcula algo solo si sus
+datos de origen cambiaron. Ejemplo: en RsaEncryptPage, el mensaje codificado
+y los bloques cifrados se recalculan solo cuando cambia la clave o el
+mensaje.
+
+5.5 Cómo se gestionan las interacciones
+---------------------------------------
+
+  - Clics: los botones llaman a funciones del store (start, next, prev,
+    randomizeKey, loadFipsVector...) o cambian estado local.
+  - Escritura: los campos de texto llaman a funciones como setPlaintext o
+    setP en cada pulsación.
+  - Teclado: el hook useKeyboardStepping escucha las teclas:
+      → / ←              avanzar / retroceder una operación
+      Shift + → / ←      avanzar / retroceder una ronda
+      Barra espaciadora  reproducir / pausar
+    Se ignoran mientras el usuario escribe en un campo, para no interferir.
+  - Reproducción automática: el hook useAutoPlay programa un temporizador
+    que llama a next() cada cierto tiempo (2200 ms en AES, 1600 ms en SHA,
+    2600 ms en la generación de claves RSA), dividido por la velocidad
+    elegida (0,5×, 1×, 1,5×, 2× o 3×).
+  - Barra de posición: un control deslizante que llama a goTo(índice).
+
+5.6 Cómo se actualiza la interfaz cuando cambian los datos
+----------------------------------------------------------
+
+React funciona así: cuando un dato del que depende un componente cambia, React
+vuelve a ejecutar ese componente y actualiza en la pantalla solo lo que
+cambió.
+
+Con Zustand, cada componente se "suscribe" a la parte del estado que usa. Por
+ejemplo, AesPage escribe:
+
+    const index = useAesPlayback((s) => s.index);
+
+Cuando el usuario pulsa "siguiente", el store cambia index de 7 a 8; AesPage
+se vuelve a dibujar, toma steps[8] y se lo pasa a AesStepView y a
+ExplanationPanel. No hay que avisar a cada componente a mano.
+
+5.7 Cómo se implementaron las animaciones
+-----------------------------------------
+
+  - Transición entre pasos: AesStepView envuelve la vista en un motion.div con
+    key={step.id}. Al cambiar el paso cambia la "key", React crea un elemento
+    nuevo y Framer Motion lo hace aparecer (opacidad de 0 a 1 y un
+    desplazamiento de 8 píxeles), con una duración de 0,2 s dividida por la
+    velocidad.
+  - ShiftRows: la vista arranca mostrando el estado "Antes" y, tras 650 ms
+    (divididos por la velocidad), cambia a "Después". Cada celda tiene la
+    propiedad layout, así que se desliza hacia su nueva posición. Hay un
+    botón "Repetir animación" y un selector Antes/Después.
+  - Cambio de valor: StateMatrix pasa pulse a cada ByteCell, que aparece con
+    una escala de 0,82 a 1.
+  - Accesibilidad: <MotionConfig reducedMotion="user"> en App.tsx respeta la
+    preferencia del sistema de reducir movimiento.
+
+Una nota del desarrollo: en una versión temprana se usaban animaciones de
+salida (AnimatePresence con mode="wait") en las vistas de paso, y en algunos
+casos la vista quedaba en blanco. Se eliminaron y hoy solo hay animaciones de
+entrada en esas vistas; AnimatePresence se conserva únicamente para el menú
+móvil (AppShell.tsx).
+
+5.8 Cómo se representan matrices, bloques, operaciones y resultados
+-------------------------------------------------------------------
+
+  - Matriz de estado (AES): StateMatrix dibuja una grilla de 4 × 4 ByteCell.
+    Los 16 bytes están guardados en orden por columnas, así que la celda de
+    la fila r y columna c es el byte r + 4·c. Puede mostrar ejes (f0..f3,
+    c0..c3), resaltar una columna y hacer seleccionables las celdas.
+  - Secuencias de bytes: ByteSequence muestra una fila de bytes, con una
+    etiqueta opcional encima de cada uno (por ejemplo, el carácter de origen).
+  - Bits: BitStrip muestra una palabra bit a bit, agrupada de a cuatro, con
+    los unos coloreados. Se usa para ver Ch, Maj y las rotaciones de SHA, y
+    las multiplicaciones por xtime en MixColumns.
+  - Operaciones: OperatorSymbol dibuja el símbolo de la operación entre dos
+    matrices (→ con la etiqueta "S-Box", "ShiftRows", ⊕, etc.).
+  - Resultados: ValueBox muestra un valor largo (hexadecimal, Base64) con un
+    botón para copiarlo; Callout muestra el resultado de la verificación
+    (verde si coincide, rojo si no).
+  - Diagrama RSA: RelationshipDiagram en SVG.
+  - Tablas: la S-Box completa (16 × 16) en SubBytesView; la tabla de
+    Euclides extendido y la de "elevar al cuadrado y multiplicar" en RSA.
+
+5.9 Por qué una arquitectura de componentes conviene en CriptoLab
+-----------------------------------------------------------------
+
+  - La misma pieza visual (un byte, una matriz) aparece cientos de veces con
+    valores distintos; programarla una vez evita inconsistencias.
+  - Cada operación de AES tiene su propia vista; si una falla o se mejora, no
+    afecta a las demás.
+  - La interfaz es una función del paso actual: cambiar el índice basta para
+    que toda la pantalla muestre el nuevo estado.
+  - Los componentes se pueden combinar: la vista de MixColumns reutiliza
+    StateMatrix, BitStrip y MathFormula.
+
+  ┌─ Cómo explicarlo en una defensa: ¿qué es un componente? ──────────────────
+  │ "Es una pieza de interfaz reutilizable que recibe datos y devuelve lo que
+  │ se ve. Por ejemplo, ByteCell dibuja un byte; StateMatrix usa dieciséis
+  │ ByteCell para dibujar la matriz de AES; y esa matriz se usa en todas las
+  │ operaciones. Escribimos la pieza una vez y la reutilizamos con datos
+  │ distintos."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+6. GESTIÓN DE ESTADOS Y FLUJO DE INFORMACIÓN
+================================================================================
+
+6.1 Qué es la gestión de estados
+--------------------------------
+
+El "estado" es toda la información que la aplicación recuerda en un momento
+dado: qué escribió el usuario, qué clave está usando, en qué paso de la
+simulación está, si eligió la explicación sencilla o la técnica.
+
+Gestionar el estado es decidir dónde se guarda esa información, quién la
+puede modificar y cómo se enteran las partes que la muestran.
+
+6.2 Qué problema resuelve
+-------------------------
+
+Sin un lugar central, un dato que necesitan varias pantallas habría que
+pasarlo de componente en componente por toda la jerarquía ("prop drilling").
+Ejemplo concreto de CriptoLab: la clave RSA se genera en la página "Generación
+de claves", pero la usan también "Cifrado", "Descifrado" y el diagrama de la
+página "RSA". Con Zustand las cuatro leen el mismo store (useRsaStore), y si
+el usuario cambia p en una pantalla, las demás ya ven la clave nueva.
+
+Analogía: el store es una pizarra en el aula. Cualquiera puede leerla, y
+solo se escribe en ella con los procedimientos acordados (las "acciones").
+
+6.3 Qué información mantiene cada store
+---------------------------------------
+
+  createSimulationStore (genérico, src/stores/createSimulationStore.ts)
+    steps      la lista completa de pasos ya calculados
+    index      el paso actual
+    isPlaying  si la reproducción automática está activa
+    speed      multiplicador de velocidad
+    isStale    si la configuración cambió después de calcular
+    Acciones: load, clear, goTo, next, prev, nextGroup, prevGroup, play,
+              pause, togglePlay, reset, setSpeed, markStale
+
+  useAesStore (modules/aes/store/aesStore.ts)
+    mode (encrypt/decrypt), plaintext, plaintextEncoding (utf8/hex/base64),
+    ciphertextHex, keys (una por variante), padding (pkcs7/none),
+    configVersion, simulation, simulationVersion, verification.
+    Acciones: setMode, setPlaintext, setKey, randomizeKey, setPadding,
+              loadFipsVector, loadOutputForDecryption, start
+
+  useShaStore (modules/sha/store/shaStore.ts)
+    text, encoding, configVersion, trace, traceVersion, verification.
+    Acción principal: start(variant)
+  useHashToolsStore (mismo archivo)
+    textos de la página de avalancha y de comparación, variante elegida y
+    hash esperado.
+
+  useRsaStore (modules/rsa/store/rsaStore.ts)
+    pInput, qInput, eInput, keySize, keyResult (la clave calculada o los
+    errores), messageMode (texto/número), messageInput, ciphertextInput.
+    Acciones: setP, setQ, setE, setKeySize, generatePrimes, suggestExponent,
+              setMessageMode, setMessageInput, setCiphertextInput
+
+  useNavigationStore   route, navigate, syncFromLocation
+  useUiStore           explanationLevel ('simple' | 'technical'),
+                       mobileNavOpen
+  useToolsStore        lo escrito en cada herramienta
+
+6.4 Cómo se modifica el estado
+------------------------------
+
+Solo mediante las acciones definidas en cada store. Dos patrones merecen
+explicarse:
+
+  a) Patrón "calcular al pulsar iniciar" (AES y SHA). Cada cambio de
+     configuración incrementa configVersion. Al iniciar, se guarda
+     simulationVersion = configVersion. Si después el usuario modifica el
+     mensaje o la clave, las versiones difieren y AesPage muestra el aviso
+     "La configuración cambió" con un botón "Aplicar". Así la simulación en
+     pantalla nunca se mezcla con una configuración que no le corresponde.
+     [Interpretación razonable: evita recalcular decenas de pasos en cada
+     tecla y deja claro qué datos se están viendo.]
+
+  b) Patrón "recalcular al instante" (RSA). Cada vez que cambia p, q o e, la
+     función interna rebuild llama a buildRsaKey y guarda el resultado en
+     keyResult. Como el cálculo es pequeño, la clave (o los errores) se ven
+     mientras se escribe.
+
+6.5 Cómo acceden los componentes al estado
+------------------------------------------
+
+Con un "selector": una función que toma solo la parte del estado que el
+componente necesita.
+
+    const verification = useAesStore((s) => s.verification);
+
+El componente se vuelve a dibujar solo cuando cambia esa parte. Fuera de
+React (por ejemplo, dentro de un manejador de teclado), se usa
+useAesPlayback.getState() para leer o llamar acciones sin suscribirse.
+
+6.6 Ventajas frente a otras alternativas
+----------------------------------------
+
+  - Frente a Context de React: Context vuelve a dibujar a todos sus
+    consumidores ante cualquier cambio; con Zustand cada componente se
+    actualiza solo si cambió lo que seleccionó. Importa en la reproducción
+    automática, donde el índice cambia cada pocos segundos.
+  - Frente a Redux: misma idea (un almacén central con acciones), pero sin
+    reducers, tipos de acción ni proveedor; cada store ocupa pocas líneas.
+  - La fábrica createSimulationStore muestra una ventaja propia: se escribió
+    una vez y se instancia tres veces (AES, SHA, claves RSA), con tipos
+    distintos de paso gracias a los genéricos de TypeScript.
+
+6.7 Ejemplo: recorrido de un dato de punta a punta
+--------------------------------------------------
+
+Caso: el usuario cifra con AES-128 el texto "Hola, criptografía!" (el valor
+inicial de la aplicación) con una clave aleatoria y relleno PKCS#7.
+
+  1. Entrada. El usuario escribe en el campo de AesConfigPanel. Cada tecla
+     llama a setPlaintext(texto); el store guarda el texto e incrementa
+     configVersion.
+
+  2. Inicio. El usuario pulsa iniciar. Se llama a start(128) en useAesStore.
+
+  3. Validación. validateAesForm comprueba:
+       - que la clave sea hexadecimal válida y tenga 16 bytes (32 dígitos);
+       - que el mensaje no esté vacío;
+       - que no supere 256 bytes;
+       - que, sin relleno, sea múltiplo de 16 bytes.
+     Si algo falla, start devuelve el mensaje de error y se muestra junto al
+     campo. Aquí todo es válido.
+
+  4. Conversión. parseInput(texto, 'utf8') usa TextEncoder: el texto pasa a
+     ser 20 bytes (la "í" ocupa 2 bytes en UTF-8; los demás caracteres, 1).
+
+  5. Motor. buildAesSimulation:
+       - expande la clave en 11 claves de ronda (expandKey);
+       - aplica PKCS#7: faltan 12 bytes para 32, se agregan 12 bytes de valor
+         0x0c;
+       - divide en 2 bloques de 16 bytes;
+       - para cada bloque ejecuta las 10 rondas y registra cada operación como
+         un AesStep con su estado anterior, posterior y explicación;
+       - comprueba que el resultado del bloque coincida con encryptBlock (el
+         cifrado directo, sin traza);
+       - devuelve la simulación completa: 86 pasos en total (2 de
+         preparación + 42 por bloque).
+
+  6. Guardado. El store guarda la simulación, marca la verificación como
+     "running" y llama a useAesPlayback.getState().load(pasos), que deja el
+     índice en 0.
+
+  7. Verificación (en paralelo). verifyWithWebCrypto cifra los mismos bloques
+     con la Web Crypto API y compara. Al terminar actualiza verification con
+     "verified" o "mismatch". Solo actualiza si la simulación sigue siendo la
+     misma (por si el usuario inició otra mientras tanto).
+
+  8. Representación. AesPage, suscrita al store, se vuelve a dibujar:
+       - SimulationControls muestra "1 / 86";
+       - AesStepView muestra la vista de "Conversión del mensaje en bytes";
+       - ExplanationPanel muestra el texto del paso, por ejemplo: "El mensaje
+         se convierte en una secuencia de 20 bytes...";
+       - AesResultPanel muestra el texto cifrado en hexadecimal y Base64 y,
+         cuando llega, el aviso "Verificado con Web Crypto API".
+
+  9. Recorrido. Cada "siguiente" cambia el índice; React vuelve a dibujar con
+     el nuevo paso. Ningún valor se recalcula: ya estaban todos guardados.
+
+  ┌─ Cómo explicarlo en una defensa: ¿qué significa gestionar el estado? ─────
+  │ "El estado es lo que la aplicación recuerda: el mensaje, la clave, en qué
+  │ paso estoy. Gestionarlo es decidir dónde se guarda y cómo se modifica.
+  │ Usamos Zustand: hay un store por módulo y uno genérico para recorrer
+  │ simulaciones. Los componentes leen solo lo que necesitan y se actualizan
+  │ solos cuando eso cambia."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+7. IMPLEMENTACIÓN DE LOS ALGORITMOS CRIPTOGRÁFICOS
+================================================================================
+
+Antes de entrar en cada algoritmo conviene fijar una distinción que atraviesa
+todo el capítulo:
+
+  IMPLEMENTACIÓN EDUCATIVA
+    Código propio de CriptoLab (carpetas engine/). Implementa el algoritmo
+    completo según su estándar y registra cada estado intermedio para
+    mostrarlo. Es correcta (se prueba contra vectores oficiales), pero no
+    está pensada para proteger datos: no se protege contra ataques de canal
+    lateral (por ejemplo, medir tiempos de ejecución), AES funciona solo en
+    modo ECB y el RSA de libro no usa relleno.
+
+  VERIFICACIÓN / MODO REAL CON WEB CRYPTO API
+    Código del navegador, invocado desde src/services/crypto/webCrypto.ts.
+    Se usa para comprobar los resultados educativos y, en el caso de RSA,
+    para un laboratorio de RSA-OAEP real. CriptoLab no implementa esa
+    criptografía: la llama.
+
+La interfaz marca esta diferencia con la insignia ModeBadge: "Implementación
+educativa" (violeta, ícono de matraz) o "Web Crypto API" (verde, ícono de
+escudo).
+
+Otra distinción importante: el ALGORITMO es el cálculo (lo que está en
+engine/); su REPRESENTACIÓN VISUAL es cómo se dibuja (lo que está en
+components/). Las vistas nunca calculan criptografía; solo muestran los
+valores que el motor dejó en cada paso. La única excepción menor es de
+presentación: MixColumnsView llama a traceGfMultiply (del motor) para
+desglosar en pantalla una multiplicación que el motor ya resolvió.
+
+
+--------------------------------------------------------------------------------
+7.1 AES (Advanced Encryption Standard)
+--------------------------------------------------------------------------------
+
+7.1.1 Qué función cumple AES
+----------------------------
+
+AES es un cifrado simétrico por bloques: la misma clave sirve para cifrar y
+para descifrar, y siempre procesa bloques de 128 bits (16 bytes). La clave
+puede ser de 128, 192 o 256 bits; cuanto más larga, más rondas:
+
+  Variante   Clave       Palabras de clave (Nk)   Rondas (Nr)   Claves de ronda
+  --------   ---------   ----------------------   -----------   ---------------
+  AES-128    16 bytes    4                        10            11
+  AES-192    24 bytes    6                        12            13
+  AES-256    32 bytes    8                        14            15
+
+Estos valores están en AES_PARAMETERS (modules/aes/types/index.ts).
+
+7.1.2 Cómo se representa internamente el bloque
+-----------------------------------------------
+
+El bloque se guarda como un arreglo de 16 números (tipo AesState), en orden
+"por columnas", tal como lo define el estándar FIPS-197: los bytes 0-3
+forman la primera columna, 4-7 la segunda, etc. La función stateIndex(fila,
+columna) devuelve fila + 4 × columna.
+
+    Bytes de entrada:  b0 b1 b2 ... b15
+
+    Matriz de estado:  | b0  b4  b8  b12 |
+                       | b1  b5  b9  b13 |
+                       | b2  b6  b10 b14 |
+                       | b3  b7  b11 b15 |
+
+7.1.3 La aritmética de fondo: el campo GF(2^8)
+----------------------------------------------
+
+Varias operaciones de AES no usan la suma y la multiplicación comunes, sino
+las de un "campo finito" de 256 elementos llamado GF(2^8). En términos
+simples:
+  - Sumar dos bytes es hacer XOR (bit a bit, 1 si los bits son distintos).
+  - Multiplicar por 2 es desplazar a la izquierda y, si se "desborda", hacer
+    XOR con 0x1b. Esa operación se llama xtime.
+  - Multiplicar por cualquier número se arma con sumas (XOR) de xtime
+    repetidos.
+
+En galoisField.ts:
+  - xtime(valor): multiplicación por 2 con reducción módulo
+    x^8 + x^4 + x^3 + x + 1 (0x11b).
+  - gfMultiply(a, b): producto en GF(2^8).
+  - traceGfMultiply(a, b): el mismo producto, pero devolviendo cada término
+    a·x^k para mostrarlo en pantalla.
+  - gfInverse(valor): inverso multiplicativo (por búsqueda; el inverso de 0 se
+    define como 0).
+
+7.1.4 La S-Box se calcula, no se copia
+--------------------------------------
+
+La S-Box es la tabla de 256 valores que usa SubBytes. Muchos programas la
+copian del estándar. CriptoLab la calcula con su definición matemática
+(constants.ts):
+
+    S(x) = Afín( x^(-1) en GF(2^8) )
+
+donde la transformación afín es b ⊕ rotl(b,1) ⊕ rotl(b,2) ⊕ rotl(b,3) ⊕
+rotl(b,4) ⊕ 0x63. La S-Box inversa se obtiene invirtiendo la tabla. Las
+pruebas comprueban que los valores coinciden con los conocidos. [Documentado
+en el código: "La S-Box se construye a partir de su definición matemática".]
+
+También se calculan las constantes de ronda Rcon (potencias de 2 en
+GF(2^8): 01, 02, 04, 08, 10, 20, 40, 80, 1b, 36) y se declaran las matrices
+fijas de MixColumns y de su inversa.
+
+7.1.5 Las cuatro transformaciones (transformations.ts)
+------------------------------------------------------
+
+  SubBytes
+    Reemplaza cada byte por su valor en la S-Box. Es la única operación no
+    lineal de AES y la que aporta "confusión".
+    Código: subBytes(state) = state.map(v => SBOX[v]).
+    Vista (SubBytesView): matrices antes/después, la S-Box completa con la
+    fila (primer dígito hexadecimal) y la columna (segundo dígito)
+    resaltadas, y la fórmula S(xy) = resultado del byte seleccionado.
+
+  ShiftRows
+    Desplaza circularmente a la izquierda la fila 1 una posición, la fila 2
+    dos y la fila 3 tres; la fila 0 no cambia. Distribuye los bytes de cada
+    columna entre columnas distintas ("difusión").
+    Código: la celda (f, c) toma el valor de la columna (c + f) mod 4.
+    Vista (ShiftRowsView): animación de las celdas desplazándose, etiquetas
+    "← 1 posición", "← 2 posiciones", y las matrices antes/después.
+
+  MixColumns
+    Multiplica cada columna por una matriz fija en GF(2^8):
+        | 02 03 01 01 |
+        | 01 02 03 01 |
+        | 01 01 02 03 |
+        | 03 01 01 02 |
+    Cada byte de salida depende de los cuatro bytes de su columna.
+    Código: multiplyColumns(state, MIX_COLUMNS_MATRIX), que usa gfMultiply.
+    Vista (MixColumnsView): el usuario elige la columna y el byte de salida;
+    se muestra cada producto desglosado con xtime en bits y el XOR final.
+    No se aplica en la última ronda (así lo define el estándar).
+
+  AddRoundKey
+    Hace XOR de cada byte del estado con el byte correspondiente de la clave
+    de ronda. Es el único paso en que interviene la clave.
+    Código: addRoundKey(state, roundKey) = XOR byte a byte.
+    Vista (AddRoundKeyView): estado ⊕ clave de ronda = resultado, con detalle
+    bit a bit.
+
+Para descifrar existen las inversas: invSubBytes (S-Box inversa),
+invShiftRows (desplaza a la derecha) e invMixColumns (matriz 0e 0b 0d 09).
+AddRoundKey es su propia inversa, porque hacer XOR dos veces con el mismo
+valor devuelve el original.
+
+7.1.6 Cómo se representan las rondas
+------------------------------------
+
+Cifrado (cipher.ts, encryptBlock; FIPS-197 sección 5.1):
+
+    AddRoundKey(clave 0)
+    para ronda = 1 .. Nr-1:  SubBytes, ShiftRows, MixColumns, AddRoundKey
+    ronda Nr (final):        SubBytes, ShiftRows, AddRoundKey  (sin MixColumns)
+
+Descifrado (decryptBlock; FIPS-197 sección 5.3, "cifrado inverso"):
+
+    AddRoundKey(clave Nr)
+    para cada ronda: InvShiftRows, InvSubBytes, AddRoundKey, InvMixColumns
+    ronda final:     InvShiftRows, InvSubBytes, AddRoundKey(clave 0)
+
+En la simulación cada operación es un paso. Todos los pasos de una misma
+ronda comparten un groupKey (por ejemplo "b0-r3" = bloque 0, ronda 3), lo que
+permite saltar de ronda en ronda con Shift + flechas o con las fichas de
+RoundProgress. La posición se muestra como texto, por ejemplo: "Bloque 1 de
+2 · Ronda 10 de 10 (final, sin MixColumns) · clave de ronda 10".
+
+7.1.7 Cómo se realiza la expansión de claves (keyExpansion.ts)
+--------------------------------------------------------------
+
+La clave original se divide en Nk palabras de 4 bytes (w0, w1, ...). Luego
+se generan palabras hasta completar 4 × (Nr + 1): 44 en AES-128, 52 en
+AES-192 y 60 en AES-256. Para cada palabra nueva w[i]:
+
+    temp = w[i-1]
+    si i es múltiplo de Nk:
+        temp = SubWord(RotWord(temp)) ⊕ Rcon[i/Nk]
+    si no, si Nk > 6 (solo AES-256) e i mod Nk = 4:
+        temp = SubWord(temp)
+    w[i] = w[i-Nk] ⊕ temp
+
+  - RotWord rota la palabra un byte a la izquierda.
+  - SubWord aplica la S-Box a cada byte.
+  - Rcon es la constante de ronda.
+
+La función expandKey guarda, para cada palabra, de qué tipo fue
+("original", "rotSubRcon", "sub" o "xor") y todos los valores intermedios
+(KeyWordDerivation). La pestaña "Expansión de clave" (KeyExpansionView) usa
+esos datos para mostrar la cadena completa de cada palabra: w[i-1] → RotWord
+→ SubWord → ⊕ Rcon → ⊕ w[i-Nk] = w[i], y las claves de ronda como matrices de
+4 × 4.
+
+7.1.8 Bytes, relleno y bloques
+------------------------------
+
+  - El mensaje se convierte en bytes (UTF-8, hexadecimal o Base64, según elija
+    el usuario).
+  - Relleno PKCS#7 (cipher.ts, pkcs7Pad): si faltan N bytes para completar el
+    bloque se agregan N bytes de valor N; si el mensaje ya es múltiplo de 16 se
+    agrega un bloque entero de 0x10. Al descifrar, pkcs7Unpad comprueba que el
+    relleno sea coherente; si no lo es, muestra "¿La clave es correcta?",
+    porque un relleno inválido suele indicar una clave equivocada.
+  - También se puede elegir "sin relleno"; entonces el mensaje debe medir un
+    múltiplo exacto de 16 bytes.
+  - Cada bloque se cifra de forma independiente (modo ECB). La propia
+    explicación del paso lo advierte: facilita la visualización pero no es
+    seguro; los sistemas reales usan modos como GCM o CBC.
+    [Documentado en el código, explanations.ts.]
+
+7.1.9 Cómo se muestran los pasos intermedios
+--------------------------------------------
+
+buildAesSimulation (simulation.ts) no calcula AES "de un tirón": ejecuta cada
+transformación por separado y, después de cada una, agrega un AesStep con:
+
+  operation      qué operación es (subBytes, shiftRows, ...)
+  blockIndex     qué bloque
+  round          qué ronda
+  roundKeyIndex  qué clave de ronda se usó (si corresponde)
+  before/after   el estado antes y después
+  roundKey       la clave de ronda (en AddRoundKey)
+  explanation    textos what / why / technical con valores concretos
+
+Antes de los bloques agrega dos pasos de preparación ("Conversión del mensaje
+en bytes" y "División en bloques de 128 bits"), y por cada bloque un paso de
+carga del estado y uno de resultado. Por ejemplo, un mensaje de 2 bloques en
+AES-128 produce 86 pasos; un bloque en AES-256 produce 60.
+
+Las explicaciones (explanations.ts) incluyen datos del cálculo real. Ejemplo
+de AddRoundKey: se cita el primer byte del estado, el de la clave y su XOR.
+
+7.1.10 Cómo se obtiene y verifica el resultado final
+----------------------------------------------------
+
+  1. Comprobación interna: al terminar cada bloque, buildAesSimulation lo
+     vuelve a calcular con encryptBlock/decryptBlock (implementación directa,
+     sin traza). Si no coinciden, se lanza el error "Inconsistencia interna
+     entre la traza y el cifrado de referencia". Esto garantiza que lo que se
+     muestra paso a paso es exactamente el cifrado real.
+  2. Verificación con el navegador (aesStore.ts, verifyWithWebCrypto): se
+     cifran los bloques con la Web Crypto API y se comparan.
+       - Web Crypto no ofrece el modo ECB. El código usa un recurso
+         documentado en webCrypto.ts: cifrar cada bloque por separado con
+         AES-CBC y un vector de inicialización en cero. El primer bloque de CBC
+         con IV nulo es exactamente el cifrado AES del bloque.
+       - En descifrado, se vuelven a cifrar los bloques descifrados y se
+         comprueba que dan el texto cifrado de entrada.
+       - Si el navegador no puede hacer la operación (por ejemplo, los
+         navegadores basados en Chromium no admiten claves AES de 192 bits en
+         Web Crypto), se valida la implementación con el vector oficial de
+         FIPS-197 de esa variante y se informa: "Verificado con vectores
+         oficiales".
+  3. Resultado: AesResultPanel lo muestra en hexadecimal, en Base64 y, al
+     descifrar, como texto UTF-8 si los bytes lo permiten. Un botón permite
+     cargar el texto cifrado para descifrarlo inmediatamente.
+
+  ┌─ Cómo explicarlo en una defensa: ¿por qué una representación visual de AES?
+  │ "Porque AES es una secuencia de transformaciones sobre una matriz de 4 por
+  │ 4. Leído como fórmula, es difícil ver qué hace ShiftRows o por qué
+  │ MixColumns mezcla una columna. Viendo la matriz antes y después, con la
+  │ S-Box resaltada o las celdas desplazándose, cada operación se entiende en
+  │ segundos. Y los valores no son ilustrativos: salen del algoritmo real,
+  │ verificado contra Web Crypto."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+--------------------------------------------------------------------------------
+7.2 RSA
+--------------------------------------------------------------------------------
+
+7.2.1 Qué es la criptografía asimétrica
+---------------------------------------
+
+En la criptografía asimétrica cada persona tiene dos claves relacionadas:
+una pública, que puede conocer cualquiera, y una privada, que solo conoce su
+dueño. Lo que se cifra con la clave pública solo se puede descifrar con la
+privada.
+
+Analogía: la clave pública es un candado abierto que se reparte a todo el
+mundo; cualquiera puede cerrar una caja con él. La única llave que lo abre la
+tiene el dueño.
+
+RSA basa su seguridad en que multiplicar dos primos grandes es fácil, pero
+recuperar esos primos a partir del producto (factorizar) es, con los métodos
+conocidos, impracticable cuando los números son de 2048 bits o más.
+
+7.2.2 Cómo se generan o seleccionan las claves
+----------------------------------------------
+
+La pantalla "Generación de claves" (RsaKeygenPage) permite dos caminos:
+
+  a) Escribir p, q y, opcionalmente, e. Por defecto la aplicación arranca con
+     el ejemplo clásico de los libros: p = 61, q = 53, e = 17.
+  b) Generar primos aleatorios eligiendo un tamaño (primes.ts, PRIME_RANGES):
+       Muy pequeños   17 a 97               (2 dígitos, para seguir a mano)
+       Pequeños       101 a 997             (3 dígitos)
+       Medianos       32 771 a 65 521       (16 bits; n de ~32 bits)
+       Grandes        2 147 483 659 a 4 294 967 291 (32 bits; n de ~64 bits)
+     randomPrime toma candidatos con crypto.getRandomValues (vía
+     randomBigIntInRange), los fuerza a impares y los prueba con Miller-Rabin.
+     El segundo primo se elige distinto del primero.
+
+Luego buildRsaKey (keygen.ts) valida y calcula. Validaciones:
+  - p y q deben ser enteros positivos y primos.
+  - p y q deben ser distintos (con p = q, φ(n) se obtiene trivialmente).
+  - n no puede superar 10^40 (límite del modo educativo: 40 dígitos).
+  - Si se da e: debe cumplir 1 < e < φ(n) y mcd(e, φ(n)) = 1; si no, se
+    explica por qué (por ejemplo, "mcd(4, 3120) = 4, por lo que no existe
+    inverso modular").
+  - Si no se da e, choosePublicExponent prueba 65537, 257, 17, 5 y 3 (en ese
+    orden) y, si ninguno sirve, busca el menor impar válido.
+Advertencias (no impiden continuar):
+  - si n ≤ 255, no se puede cifrar texto byte a byte;
+  - si e = d, la clave privada coincide con la pública.
+
+7.2.3 Qué papel cumplen los números primos
+------------------------------------------
+
+  - n = p × q es público. p y q deben mantenerse en secreto.
+  - φ(n) = (p − 1)(q − 1) solo se puede calcular conociendo p y q.
+  - d se calcula a partir de φ(n). Por lo tanto, quien no puede factorizar n
+    no puede obtener d.
+
+Para saber si un número es primo, primes.ts implementa el test de
+Miller-Rabin con las 12 primeras bases primas (2, 3, 5, ..., 37). Como dice
+el comentario del código, con esas bases el test es determinista (siempre
+acierta) para n < 3,18 · 10^23, lo que cubre todos los primos que genera la
+aplicación (hasta 32 bits). Para números mayores ingresados a mano el
+resultado es probabilístico. [Documentado en el código.]
+
+7.2.4 Cómo se obtienen los parámetros (los ocho pasos)
+------------------------------------------------------
+
+keygenSteps.ts arma ocho pasos, cada uno con su fórmula en TeX y su
+explicación. Con el ejemplo por defecto:
+
+  Paso   Qué se calcula                     Ejemplo (p = 61, q = 53)
+  -----  ---------------------------------  --------------------------------
+  1      Primo p                            p = 61
+  2      Primo q                            q = 53
+  3      Módulo n = p × q                   n = 3233  (12 bits)
+  4      φ(n) = (p−1)(q−1)                  φ(n) = 60 × 52 = 3120
+  5      Exponente público e                e = 17, mcd(17, 3120) = 1
+  6      Exponente privado d = e⁻¹ mod φ    d = 2753  (17 × 2753 = 15 × 3120 + 1)
+  7      Clave pública (e, n)               (17, 3233)
+  8      Clave privada (d, n)               (2753, 3233)
+
+El inverso modular d se calcula con el algoritmo de Euclides extendido
+(math.ts, traceModularInverse), que registra cada fila de la tabla. Para el
+ejemplo:
+
+    3120 = 183 × 17 + 9
+      17 =   1 ×  9 + 8
+       9 =   1 ×  8 + 1      ← el resto llega a 1: mcd = 1, existe inverso
+       8 =   8 ×  1 + 0
+    Coeficiente final: −367  →  −367 mod 3120 = 2753 = d
+
+La pantalla muestra esta tabla (EuclidTable), los ocho pasos con los mismos
+controles de reproducción que AES y un diagrama SVG con las relaciones entre
+p, q, n, φ(n), e y d (RelationshipDiagram).
+
+7.2.5 Cómo se realiza el cifrado y el descifrado
+------------------------------------------------
+
+  Cifrado:     C = M^e mod n     (rsaEncryptValue)
+  Descifrado:  M = C^d mod n     (rsaDecryptValue)
+
+Ambos usan exponenciación modular rápida (modPow): nunca se calcula M^e
+completo (sería un número gigantesco), sino que se reduce módulo n en cada
+paso.
+
+Preparación del mensaje (messages.ts, encodeMessage):
+  - Modo "Número": el usuario ingresa un M entero con 0 ≤ M < n. Si M ≥ n se
+    rechaza, porque la operación mod n perdería información.
+  - Modo "Texto (byte a byte)": el texto se convierte a bytes UTF-8 y CADA
+    BYTE (un número de 0 a 255) se cifra por separado. Por eso exige n > 255
+    y admite hasta 64 bytes. Los caracteres de varios bytes se etiquetan
+    "ñ·1", "ñ·2", etc.
+
+Descifrado (RsaDecryptPage): se ingresan los valores cifrados separados por
+comas o espacios (parseCiphertext comprueba que cada uno sea < n). Se
+descifra cada uno y, si todos son bytes, decodeBytes intenta reconstruir el
+texto UTF-8. Desde la página de cifrado, el botón "Descifrar este resultado"
+lleva el texto cifrado directamente a la página de descifrado.
+
+7.2.6 Cómo se representan los cálculos
+--------------------------------------
+
+traceModPow (math.ts) implementa el método "elevar al cuadrado y multiplicar"
+de izquierda a derecha y guarda cada paso: para cada bit del exponente, el
+resultado se eleva al cuadrado mod n y, si el bit es 1, se multiplica por la
+base mod n. ModPowTraceView lo muestra como tabla.
+
+Ejemplo real con la clave por defecto: cifrar M = 65 con e = 17 (17 en
+binario es 10001):
+
+  Bit   Valor previo   Al cuadrado mod 3233   × 65 mod 3233 (si bit = 1)
+  ---   ------------   --------------------   --------------------------
+  1     1              1                      65
+  0     65             992                    —
+  0     992            1232                   —
+  0     1232           1547                   —
+  1     1547           789                    2790
+
+  Resultado: C = 65^17 mod 3233 = 2790.  Descifrar: 2790^2753 mod 3233 = 65.
+
+En la página de cifrado, RsaBlockTable lista todos los bloques (cada byte y su
+valor cifrado); al seleccionar uno, se muestra su traza completa.
+
+7.2.7 El modo criptográfico real: RSA-OAEP (RealRsaLab.tsx)
+-----------------------------------------------------------
+
+En la página "RSA" hay un laboratorio que usa la Web Crypto API del navegador:
+
+  - Genera un par de claves RSA-OAEP de 2048, 3072 o 4096 bits, con exponente
+    65537 y SHA-256 (generateRsaOaepKeyPair).
+  - La clave privada se crea como NO EXTRAÍBLE: el código no puede leerla;
+    permanece dentro del motor criptográfico del navegador. Solo se exporta la
+    clave pública para mostrar el módulo n en hexadecimal.
+  - Calcula y muestra el tamaño máximo del mensaje: k − 2·hLen − 2 bytes
+    (190 bytes con 2048 bits, 318 con 3072, 446 con 4096). Explica que, para
+    datos más largos, se usa cifrado híbrido (AES para los datos, RSA para la
+    clave AES).
+  - Conserva los dos últimos cifrados del mismo mensaje y, cuando hay dos,
+    explica por qué son distintos: OAEP agrega bytes aleatorios en cada
+    cifrado.
+  - Descifra el último cifrado con la clave privada.
+
+Aquí CriptoLab no implementa RSA: todo el cálculo lo hace el navegador. El
+valor didáctico está en contrastarlo con el modo educativo.
+
+7.2.8 Limitaciones de la implementación educativa de RSA
+--------------------------------------------------------
+
+  - Los números son muy chicos (n de hasta 40 dígitos; con primos aleatorios,
+    hasta ~64 bits). Una clave real tiene 2048 bits o más.
+  - Es "RSA de libro" (textbook RSA): sin relleno. Es determinista: el mismo
+    mensaje produce siempre el mismo cifrado.
+  - El modo texto cifra byte a byte, lo que equivale a un cifrado por
+    sustitución (la misma letra produce siempre el mismo número). La
+    aplicación lo advierte en pantalla ("¿Por qué esto no es seguro?").
+  - Las operaciones con BigInt no son de tiempo constante (posible fuga por
+    canal lateral).
+  - No usa el Teorema Chino del Resto para acelerar el descifrado (el texto
+    técnico del paso 8 lo menciona como práctica de las implementaciones
+    reales).
+  - No incluye firma digital.
+
+  ┌─ Cómo explicarlo en una defensa: ¿cómo funciona RSA en la aplicación? ────
+  │ "Hay dos modos. El educativo usa números chicos para que se pueda seguir
+  │ la cuenta: elegimos p y q primos, calculamos n y φ(n), elegimos e y
+  │ obtenemos d con Euclides extendido. Cifrar es M a la e módulo n, y
+  │ mostramos cada cuadrado y cada multiplicación. Ese modo es inseguro a
+  │ propósito, y la aplicación lo dice. El modo real usa RSA-OAEP del
+  │ navegador con claves de 2048 bits o más."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+--------------------------------------------------------------------------------
+7.3 SHA-256 (y SHA-512)
+--------------------------------------------------------------------------------
+
+7.3.1 Qué es una función hash
+-----------------------------
+
+Una función hash toma un mensaje de cualquier longitud y produce un resumen
+("hash" o "huella digital") de longitud fija: 256 bits en SHA-256 y 512 en
+SHA-512. Sus propiedades deseables son:
+  - el mismo mensaje produce siempre el mismo hash;
+  - a partir del hash no se puede reconstruir el mensaje;
+  - es inviable encontrar dos mensajes con el mismo hash;
+  - un cambio mínimo en el mensaje cambia aproximadamente la mitad de los bits
+    del hash (efecto avalancha).
+
+7.3.2 Por qué no es un método de cifrado
+----------------------------------------
+
+Cifrar es reversible: con la clave se recupera el mensaje. Un hash no usa
+clave y no tiene vuelta atrás: no existe una "clave de descifrado". La única
+forma de "invertirlo" es probar entradas hasta dar con el mismo hash (fuerza
+bruta). El último paso de la simulación lo dice explícitamente: "SHA-256 es
+una función hash, no un cifrado" (steps.ts).
+
+Usos típicos: verificar integridad (que un archivo no cambió), guardar
+contraseñas (con funciones derivadas), firmas digitales.
+
+7.3.3 Cómo se prepara el mensaje y cómo funciona el relleno
+-----------------------------------------------------------
+
+padMessage (sha2.ts):
+  1. Se agrega un bit "1" (en la práctica, el byte 0x80).
+  2. Se agregan bytes en cero hasta que solo quede lugar para la longitud.
+  3. En los últimos 8 bytes (SHA-256) o 16 bytes (SHA-512) se escribe la
+     longitud original del mensaje en bits, como entero big-endian.
+  El total queda múltiplo de 64 bytes (512 bits) en SHA-256 o de 128 bytes
+  (1024 bits) en SHA-512.
+
+Ejemplo con el mensaje por defecto "abc" (3 bytes = 24 bits) en SHA-256:
+
+    61 62 63 | 80 | 00 × 52 | 00 00 00 00 00 00 00 18
+    "abc"      bit 1  ceros    longitud = 24 = 0x18
+
+  Total: 3 + 1 + 52 + 8 = 64 bytes = un bloque.
+
+Las vistas PaddingView y LengthView colorean cada zona (mensaje, bit 1,
+ceros, longitud).
+
+7.3.4 Cómo se procesan los bloques
+----------------------------------
+
+Los bloques se procesan en orden y el resultado de cada uno es el punto de
+partida del siguiente (construcción de Merkle-Damgård). Para cada bloque:
+
+  1. Expansión del mensaje ("message schedule"): las 16 palabras del bloque se
+     extienden a 64 (SHA-256) u 80 (SHA-512):
+         W[t] = σ1(W[t−2]) + W[t−7] + σ0(W[t−15]) + W[t−16]     (t ≥ 16)
+     con sumas módulo 2^32 (o 2^64). Se guarda el detalle de cada W[t]
+     (ShaScheduleDetail) para la vista ScheduleView.
+  2. Inicialización de los registros A-H con el valor hash actual.
+  3. Las 64 (u 80) rondas.
+  4. Actualización: cada registro final se suma al valor hash con que empezó
+     el bloque.
+
+7.3.5 Qué función cumplen las palabras y los registros
+------------------------------------------------------
+
+  - Palabras W0...W63: fragmentos del mensaje (las primeras 16) y mezclas de
+    ellos (las demás). En cada ronda entra una.
+  - Constantes K0...K63: una por ronda. Son los primeros 32 bits de la parte
+    fraccionaria de la raíz cúbica de los primeros 64 primos.
+  - Registros A...H: ocho palabras que forman el estado interno. Al empezar
+    el primer bloque toman los valores iniciales H0...H7 (primeros 32 bits de
+    la parte fraccionaria de la raíz cuadrada de los primeros 8 primos; por
+    ejemplo, H0 = 6a09e667, derivado de √2).
+
+Igual que la S-Box de AES, estas constantes no se copian: constants.ts las
+calcula con una raíz entera exacta (método de Newton sobre BigInt,
+integerRoot) aplicada a los primeros primos. Las pruebas verifican, por
+ejemplo, que K0 de SHA-256 sea 428a2f98 y K0 de SHA-512 sea
+428a2f98d728ae22.
+
+7.3.6 Cómo se realizan las 64 rondas
+------------------------------------
+
+En cada ronda t (traceSha):
+
+    Σ1  = ROTR6(E) ⊕ ROTR11(E) ⊕ ROTR25(E)
+    Ch  = (E ∧ F) ⊕ (¬E ∧ G)          cada bit de E "elige" entre F y G
+    T1  = H + Σ1 + Ch + K[t] + W[t]
+    Σ0  = ROTR2(A) ⊕ ROTR13(A) ⊕ ROTR22(A)
+    Maj = (A ∧ B) ⊕ (A ∧ C) ⊕ (B ∧ C)  cada bit toma el valor mayoritario
+    T2  = Σ0 + Maj
+
+    Nuevos registros:
+      H←G, G←F, F←E, E←D+T1, D←C, C←B, B←A, A←T1+T2
+
+Todas las sumas son módulo 2^32. En SHA-512 cambian las rotaciones (28/34/39
+y 14/18/41), las palabras son de 64 bits y hay 80 rondas.
+
+Un único motor sirve para ambos: las rotaciones de cada función Σ/σ son datos
+(SHA_PARAMETERS) y una sola función, applySigma, las aplica. Como las
+palabras de SHA-512 tienen 64 bits y los number de JavaScript solo son
+exactos hasta 2^53, todo el motor trabaja con BigInt.
+
+Vista (RoundView): muestra W[t] y K[t], el desglose de las rotaciones de Σ1 y
+Σ0, Ch y Maj bit a bit (BitStrip) para ver cómo se elige o se vota cada bit,
+el cálculo de T1 y T2, y los registros antes y después (Registers).
+
+7.3.7 Cómo se obtiene el resumen final
+--------------------------------------
+
+Al terminar el último bloque, los ocho valores H0...H7 se concatenan: 8 × 32
+= 256 bits. Para "abc" el resultado es:
+
+    ba7816bf 8f01cfea 414140de 5dae2223 b00361a3 96177a9c b410ff61 f20015ad
+
+(que coincide con el vector oficial de FIPS 180-4 usado en las pruebas).
+
+7.3.8 Cómo se muestra el proceso
+--------------------------------
+
+buildShaSteps (steps.ts) arma la lista de pasos: conversión a bytes, relleno,
+longitud, división en bloques y, por cada bloque, expansión, inicialización,
+una ronda por paso y actualización del hash; al final, el hash. Para un
+mensaje de un bloque en SHA-256 son 72 pasos (4 + 2 + 64 + 1 + 1); en SHA-512,
+88. Cada ronda es su propio grupo, así que "avanzar una ronda" con Shift + →
+coincide con avanzar un paso dentro de las rondas.
+
+La entrada se limita a 1024 bytes (SHA_MAX_INPUT_BYTES) "para mantener la
+simulación fluida". [Documentado en el código.]
+
+7.3.9 Verificación de SHA
+-------------------------
+
+Al iniciar, shaStore calcula el mismo hash con crypto.subtle.digest (Web
+Crypto) y compara. ShaResult muestra ambos valores y "verified" o "mismatch".
+Si Web Crypto no está disponible (página que no se sirve por HTTPS ni desde
+localhost), se avisa.
+
+7.3.10 Comparación de hashes y efecto avalancha
+-----------------------------------------------
+
+  - HashComparePage: calcula el hash de dos textos (por defecto
+    "contraseña123" y "Contraseña123"), muestra los dígitos distintos
+    resaltados y cuántos bits difieren, permite pegar un "hash esperado" para
+    comprobar coincidencia, y confirma ambos hashes con Web Crypto.
+  - AvalanchePage: compara el hash de dos mensajes (por defecto "Transferir
+    100 pesos a Ana" y "Transferir 900 pesos a Ana"), muestra una grilla de
+    bits (HashBitGrid) con los bits que cambiaron, la cantidad y la
+    proporción. Un botón cambia un carácter al azar (con la fuente aleatoria
+    segura) para repetir el experimento. La proporción esperada ronda el 50 %.
+
+  ┌─ Cómo explicarlo en una defensa: ¿qué diferencia hay entre cifrado y hash?
+  │ "El cifrado es reversible: con la clave se recupera el mensaje. El hash no
+  │ tiene clave ni vuelta atrás: resume cualquier mensaje en un valor de
+  │ longitud fija que sirve para verificar integridad. En la aplicación se ve
+  │ en el efecto avalancha: cambiar un carácter cambia cerca de la mitad de
+  │ los bits del hash, sin ninguna relación visible con el original."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+8. DISEÑO VISUAL Y EXPERIENCIA DE USUARIO
+================================================================================
+
+8.1 Organización de las pantallas
+---------------------------------
+
+  - Barra lateral fija a la izquierda en pantallas grandes (Sidebar), con las
+    18 pantallas agrupadas en cinco secciones y el aviso "Herramienta
+    educativa. No la uses para proteger información real." En celulares se
+    reemplaza por un encabezado con botón de menú que abre un panel
+    deslizante.
+  - Cada página empieza con PageHeader: una etiqueta de sección, el título,
+    una descripción breve y las insignias (por ejemplo, "Implementación
+    educativa", "Bloque de 128 bits", "Clave de 128 bits", "10 rondas").
+  - Los simuladores siguen el mismo orden de arriba hacia abajo:
+    configuración → controles → vista del paso + explicación → resultado →
+    advertencias.
+  - En pantallas anchas, la vista del paso ocupa la columna principal y una
+    columna de 320 píxeles a la derecha muestra la explicación y el progreso
+    por rondas.
+
+[Interpretación razonable: repetir el mismo esquema en AES, SHA y RSA hace que,
+aprendido uno, los demás se usen sin explicación.]
+
+8.2 Jerarquía visual
+--------------------
+
+  - Títulos grandes en blanco; texto de lectura en gris claro; etiquetas
+    secundarias en mayúsculas pequeñas (clase .label-caps).
+  - Los datos se agrupan en tarjetas (Card, clase .panel) con borde sutil
+    sobre un fondo más oscuro.
+  - El valor que importa en cada paso aparece grande (celdas de 3,5 rem en
+    ShiftRows, matriz "lg" en las claves de ronda); los de contexto, en
+    tamaño chico o atenuados (tono "muted": por ejemplo, las columnas no
+    seleccionadas en MixColumns).
+
+8.3 Uso de colores
+------------------
+
+El fondo es oscuro (paleta "ink"). Sobre él, cada color tiene un significado
+fijo, definido en tailwind.config.js y aplicado mediante tones.ts:
+
+  Tono      Color           Significado
+  --------  --------------  ------------------------------------------
+  data      azul            datos / estado
+  key       ámbar           clave
+  sub       violeta         sustitución (S-Box)
+  shift     cian            desplazamiento (ShiftRows, RotWord)
+  mix       verde azulado   mezcla (MixColumns, Rcon)
+  xor       rosa/rojo       XOR
+  result    verde           resultado / verificación correcta
+  private   rosa            clave privada RSA
+  brand     celeste         color de la marca y de los controles
+
+Ejemplos: en AddRoundKey el estado es azul, la clave ámbar y el resultado del
+XOR rosa; en ShiftRows las celdas que se movieron pasan a cian; en RSA, el
+exponente público y el privado tienen colores distintos.
+
+[Interpretación razonable: con muchos valores a la vez en pantalla, el color
+dice qué papel cumple cada uno sin tener que leer etiquetas.]
+
+8.4 Representación de matrices y bloques
+----------------------------------------
+
+Las matrices de AES se dibujan como en el estándar (4 × 4, por columnas),
+con ejes opcionales f0-f3 y c0-c3. Los valores se muestran en hexadecimal con
+fuente monoespaciada (JetBrains Mono) y cifras de ancho fijo, para que las
+columnas queden alineadas. Al pasar el mouse sobre un byte se ven su valor
+hexadecimal, decimal y binario.
+
+8.5 Animaciones
+---------------
+
+Breves (alrededor de 0,2 s) y con propósito: indicar que cambió el paso,
+mostrar el movimiento de ShiftRows y marcar los valores nuevos. Se adaptan a
+la velocidad elegida y se reducen si el sistema operativo pide menos
+movimiento.
+
+8.6 Indicadores de progreso
+---------------------------
+
+  - SimulationControls: contador "paso actual / total", barra deslizante
+    coloreada hasta la posición actual y estado ("Reproduciendo", "En
+    pausa"). Queda fija en la parte superior al desplazarse por la página
+    (sticky), para no perder los controles de vista.
+  - Línea de posición: "Bloque 1 de 2 · Ronda 3 de 10 · clave de ronda 3".
+  - RoundProgress (AES): fichas por ronda (Prep., R0, R1, ..., Salida) que
+    indican cuáles ya se recorrieron y permiten saltar a cualquiera, más un
+    selector de bloque.
+  - ShaProgress (SHA): fichas por etapa (Bytes, Relleno, Longitud, Bloques,
+    ..., Hash), un deslizador de ronda y una franja de 64 (u 80) casillas,
+    una por ronda, que también permiten saltar.
+
+8.7 Visualización de resultados
+-------------------------------
+
+  - Valores largos en ValueBox, con botón de copiar (y aviso de "copiado" o
+    de error, mediante useClipboard).
+  - Resultados en varios formatos: hexadecimal, Base64, texto.
+  - La verificación como un aviso de color: verde "Verificado con Web Crypto
+    API", azul "Verificado con vectores oficiales", rojo "Verificación
+    fallida".
+
+8.8 Interacción paso a paso
+---------------------------
+
+Controles disponibles en AES, SHA y generación de claves RSA:
+
+    ⏮ ronda anterior   ◀ paso anterior   ▶/⏸ reproducir/pausar
+    ▶ paso siguiente   ⏭ ronda siguiente   ↺ reiniciar
+    barra de posición   velocidad 0,5× a 3×
+    Teclado: ← → (paso), Shift + ← → (ronda), espacio (reproducir/pausar)
+
+Los botones se desactivan cuando no tienen efecto (no se puede retroceder en
+el primer paso) y su texto de ayuda incluye el atajo de teclado.
+
+8.9 Legibilidad y accesibilidad
+-------------------------------
+
+  - Explicación en dos niveles: "Sencilla" (qué ocurre y por qué) y "Técnica"
+    (agrega el detalle matemático). La elección se recuerda al cambiar de
+    pantalla (uiStore).
+  - Enlace "Saltar al contenido" para teclado y lectores de pantalla.
+  - Botones con aria-label; el panel de explicación con aria-live="polite",
+    para que un lector de pantalla anuncie el texto nuevo al cambiar de paso.
+  - Anillo de foco visible al navegar con teclado (:focus-visible).
+  - Fórmulas con MathML además de HTML.
+  - Diseño adaptable a celulares (menú deslizante, grillas que se apilan).
+
+8.10 Retroalimentación al usuario
+---------------------------------
+
+  - Errores de validación junto a cada campo, con la causa y cómo
+    corregirla (por ejemplo: "Cada byte necesita dos dígitos hexadecimales
+    (cantidad de dígitos impar)").
+  - Aviso "La configuración cambió" si se modifican los datos después de
+    calcular, con botón "Aplicar".
+  - Advertencias permanentes donde corresponde: uso exclusivamente educativo
+    y modo ECB en AES; RSA byte a byte no seguro.
+  - Indicadores de carga en el laboratorio RSA-OAEP mientras el navegador
+    genera claves.
+  - Pantalla de error con "Reintentar" si algo falla inesperadamente
+    (ErrorBoundary).
+
+8.11 Por qué la representación gráfica facilita la comprensión
+--------------------------------------------------------------
+
+Un algoritmo como AES, descrito con fórmulas, exige que el lector mantenga
+mentalmente 16 bytes y siga cómo cambian en decenas de operaciones. Una
+representación gráfica traslada ese esfuerzo a la vista:
+
+  - Se ven a la vez el estado anterior, la operación y el posterior.
+  - El color permite seguir un byte o una columna a través de la operación.
+  - El movimiento (ShiftRows) muestra una relación espacial que en una
+    fórmula de índices es abstracta.
+  - La interacción (elegir una celda, una columna, un bloque) permite
+    "preguntarle" al algoritmo por un caso concreto.
+  - Los valores son reales y verificados: el estudiante puede reproducir un
+    paso a mano y comprobar que coincide.
+
+[Interpretación razonable de los objetivos de diseño; el proyecto no incluye
+una evaluación con usuarios que mida este efecto.]
+
+
+================================================================================
+9. PROCESAMIENTO DE DATOS Y CONVERSIONES
+================================================================================
+
+Todas las conversiones están en src/utils/bytes.ts. Son funciones puras (no
+dependen de la página) y se reutilizan en todos los módulos.
+
+9.1 Por qué son importantes
+---------------------------
+
+Los algoritmos criptográficos no operan sobre letras, sino sobre bytes
+(números de 0 a 255). Entender cómo un texto se convierte en bytes, y cómo
+esos bytes se escriben en hexadecimal o binario, es requisito para entender
+qué hace el algoritmo. Por eso la primera etapa de cada simulador es
+"Conversión del mensaje en bytes", y por eso existen las herramientas
+auxiliares.
+
+9.2 Texto a bytes y bytes a texto (codificación UTF-8)
+------------------------------------------------------
+
+  - utf8ToBytes(texto): usa TextEncoder (API del navegador). En UTF-8, los
+    caracteres ASCII (letras sin tilde, números) ocupan 1 byte; "ñ", "á" o
+    "í" ocupan 2; un emoji ocupa 4.
+  - bytesToUtf8(bytes): usa TextDecoder con la opción fatal: true. Si los
+    bytes no forman UTF-8 válido, devuelve null en lugar de mostrar
+    caracteres extraños. Así, al descifrar con una clave incorrecta la
+    aplicación puede decir que los bytes no son texto válido.
+  - utf8CharacterMap(texto): asocia cada carácter con sus bytes (usado en la
+    herramienta Texto ↔ hexadecimal para mostrar, por ejemplo, que "ñ" es
+    c3 b1).
+
+9.3 Hexadecimal
+---------------
+
+  - byteToHex / bytesToHex: cada byte se escribe con dos dígitos
+    hexadecimales (0-9, a-f). Ejemplo: 83 → "53".
+  - normalizeHex: acepta entradas "desprolijas": quita espacios, dos puntos,
+    comas, guiones, guiones bajos y prefijos 0x, y pasa a minúsculas.
+  - validateHex: devuelve un mensaje claro si la entrada está vacía, tiene
+    caracteres no válidos o una cantidad impar de dígitos.
+  - hexToBytes: convierte (después de validar).
+
+9.4 Binario
+-----------
+
+  - byteToBinary / bytesToBinary: cada byte como 8 bits. Ejemplo: 0x53 →
+    01010011.
+  - En SHA, wordToBits convierte una palabra de 32 o 64 bits en un arreglo de
+    bits para BitStrip.
+  - popcount8 y countBitDifferences cuentan bits en 1 y bits distintos entre
+    dos secuencias (efecto avalancha, comparador).
+
+9.5 Base64
+----------
+
+  - bytesToBase64 / base64ToBytes: usan btoa/atob del navegador. La lectura
+    acepta también la variante "URL" (con - y _) y completa el relleno "=".
+  - Se usa para mostrar resultados (AES, RSA-OAEP) y como formato de entrada.
+
+9.6 Entrada del usuario según el formato elegido
+------------------------------------------------
+
+parseInput(texto, codificación) es la puerta de entrada común: según el
+usuario elija "Texto (UTF-8)", "Hexadecimal" o "Base64", convierte a bytes o
+devuelve un error explicativo. La usan AES, SHA y las herramientas.
+
+9.7 Otras utilidades
+--------------------
+
+  - byteToPrintable: muestra el carácter ASCII de un byte o "·" si no es
+    imprimible (visualizador de bytes).
+  - chunkBytes: divide en bloques de tamaño fijo (bloques de 16 bytes de AES).
+  - bytesEqual: compara dos secuencias (verificación).
+
+9.8 Enteros grandes
+-------------------
+
+En RSA, los valores se leen como texto y se convierten con BigInt después de
+comprobar que solo tienen dígitos (parseNatural). En el modo RSA-OAEP, el
+módulo n que entrega Web Crypto en formato JWK (Base64 URL) se convierte a
+hexadecimal (base64UrlToHex) para mostrarlo.
+
+9.9 Herramientas auxiliares que exponen estas conversiones
+----------------------------------------------------------
+
+  Texto ↔ hexadecimal     TextHexTool       UTF-8 carácter por carácter, hex y
+                                            Base64, en ambos sentidos
+  Hexadecimal ↔ binario   HexBinaryTool     cada dígito hex son 4 bits
+  Visualizador de bytes   ByteViewerTool    cada byte en hex, decimal, binario y
+                                            ASCII; entrada en UTF-8, hex o Base64
+  Generador de claves     KeyGeneratorTool  bytes aleatorios seguros en hex,
+                                            Base64 y binario
+  Números aleatorios      RandomNumberTool  enteros en un rango, sin sesgo
+                                            (muestreo por rechazo)
+  Comparador              CompareTool       diferencias byte a byte y bit a bit
+
+
+================================================================================
+10. VERIFICACIÓN Y CONFIABILIDAD
+================================================================================
+
+10.1 Pruebas automáticas presentes
+----------------------------------
+
+Hay 33 pruebas automáticas con Vitest, en tres archivos. Se ejecutan con
+"npm test" y, al preparar este documento, las 33 pasaron.
+
+  aes.test.ts (17 pruebas)
+    - xtime y la multiplicación en GF(2^8) coinciden con el ejemplo de
+      FIPS-197 §4.2.
+    - La S-Box calculada coincide con valores conocidos.
+    - MixColumns de FIPS-197 (columna db 13 53 45 → 8e 4d a1 bc).
+    - Las transformaciones inversas deshacen las directas.
+    - La expansión de clave coincide con FIPS-197 Apéndice A.1 y genera la
+      cantidad correcta de palabras por variante.
+    - Para AES-128, 192 y 256: cifra y descifra los vectores de FIPS-197
+      Apéndice C, y la simulación paso a paso produce el mismo resultado y la
+      cantidad correcta de rondas.
+    - PKCS#7 ida y vuelta; cifrar y descifrar mensajes de varios bloques
+      recupera el mensaje.
+
+  sha.test.ts (8 pruebas)
+    - Las constantes derivadas de los primos coinciden con las de SHA-256 y
+      SHA-512.
+    - SHA-256: vectores de FIPS 180-4 para "abc", mensaje vacío y mensaje de
+      448 bits (dos bloques).
+    - SHA-512: "abc" y mensaje de 896 bits (dos bloques).
+    - Los pasos de la simulación incluyen una ronda por paso, tienen
+      identificadores únicos y terminan en el hash.
+
+  rsa.test.ts (8 pruebas)
+    - Inverso modular con Euclides extendido.
+    - La traza de exponenciación coincide con modPow.
+    - Miller-Rabin reconoce primos y compuestos.
+    - El ejemplo clásico p = 61, q = 53 genera la clave correcta, cifra y
+      descifra, rechaza parámetros inválidos y recupera texto byte a byte.
+    - La generación aleatoria produce claves válidas en todos los tamaños.
+
+Además, "npm run build" no compila si TypeScript encuentra errores de tipos.
+
+10.2 Comparación entre la implementación educativa y la Web Crypto API
+----------------------------------------------------------------------
+
+  Algoritmo           Cómo se verifica en la aplicación
+  ------------------  ------------------------------------------------------
+  AES (cifrado)       Web Crypto cifra los mismos bloques (AES-CBC con IV
+                      cero por bloque) y se comparan.
+  AES (descifrado)    Web Crypto vuelve a cifrar los bloques descifrados y se
+                      comprueba que dan el texto cifrado de entrada.
+  AES-192 / sin       Si el navegador no puede, se valida con el vector oficial
+  Web Crypto          de FIPS-197 y se informa.
+  SHA-256 / SHA-512   crypto.subtle.digest calcula el hash y se compara (en el
+                      simulador y en la comparación de hashes).
+  RSA educativo       Web Crypto no ofrece RSA sin relleno, así que no hay
+                      comparación en tiempo de ejecución. La corrección se
+                      respalda con las pruebas automáticas y se puede
+                      comprobar en la aplicación: lo que se cifra en
+                      "Cifrado" se recupera en "Descifrado".
+  RSA-OAEP            No se compara: lo calcula directamente el navegador.
+
+Además, en AES existe la comprobación interna descrita en 7.1.10: cada bloque
+de la traza se compara con el cifrado directo; si difieren, la simulación no
+se muestra.
+
+10.3 Validación de entradas
+---------------------------
+
+  - Hexadecimal: caracteres válidos, cantidad par de dígitos, no vacío.
+  - Base64: alfabeto válido.
+  - Clave AES: longitud exacta según la variante (16, 24 o 32 bytes).
+  - Mensaje AES: no vacío, hasta 256 bytes, múltiplo de 16 si no hay relleno.
+  - Texto cifrado AES: múltiplo de 16 bytes, hasta 17 bloques.
+  - SHA: hasta 1024 bytes.
+  - RSA: p y q primos y distintos, n de hasta 40 dígitos, e válido y coprimo
+    con φ(n), M < n, cada valor cifrado < n, texto de hasta 64 bytes.
+  - RSA-OAEP: longitud máxima según el tamaño de clave (el botón de cifrar
+    se desactiva si se supera).
+
+10.4 Manejo de errores
+----------------------
+
+  - Las funciones de validación devuelven mensajes en lugar de "romper" la
+    aplicación (por ejemplo, RsaKeyResult con ok: false y la lista de
+    errores por campo).
+  - start() de AES captura cualquier error del motor y lo muestra como
+    mensaje.
+  - pkcs7Unpad informa un relleno inválido sin lanzar error.
+  - bytesToUtf8 devuelve null ante UTF-8 inválido.
+  - El laboratorio RSA-OAEP captura los fallos del navegador y muestra "La
+    operación falló: ...".
+  - ErrorBoundary (App.tsx) captura errores inesperados de cualquier página,
+    muestra el mensaje y un botón "Reintentar"; al cambiar de pantalla se
+    reinicia solo.
+  - Si una verificación asíncrona termina después de que el usuario inició
+    otra simulación, su resultado se descarta (se compara que la simulación
+    siga siendo la misma).
+
+10.5 Aleatoriedad
+-----------------
+
+random.ts usa exclusivamente crypto.getRandomValues; el comentario del
+archivo lo dice: "Nunca se usa Math.random para claves". randomBigIntBelow
+usa muestreo por rechazo para que todos los valores del rango sean
+igualmente probables (sin "sesgo de módulo"). [Documentado en el código.]
+
+10.6 Limitaciones de la verificación
+------------------------------------
+
+  - No hay pruebas automáticas de la interfaz (componentes, navegación) ni
+    pruebas de extremo a extremo; las 33 pruebas cubren los motores.
+  - No se encontró en el proyecto un analizador de estilo (como ESLint) ni
+    integración continua.
+  - El RSA educativo no tiene verificación independiente en tiempo de
+    ejecución (ver 10.2).
+  - No hay evidencia en el proyecto de pruebas sistemáticas en Firefox o
+    Safari; el README declara compatibilidad con navegadores modernos.
+  - No se realizó una evaluación con usuarios que mida el efecto educativo.
+
+10.7 Demostración educativa frente a herramienta de producción
+--------------------------------------------------------------
+
+  Aspecto              CriptoLab (modo educativo)       Herramienta de producción
+  -------------------  -------------------------------  ---------------------------
+  Objetivo             Mostrar cada paso                Proteger datos
+  Modo AES             ECB (bloques independientes)     GCM u otro modo autenticado
+  RSA                  De libro, números chicos         OAEP/PSS, 2048+ bits
+  Canal lateral        Sin protección                   Tiempo constante
+  Claves               Visibles en pantalla             Protegidas, no extraíbles
+  Implementación       Propia, didáctica                Auditada (o la del sistema)
+
+La aplicación es coherente con esta diferencia: lo indica con las insignias,
+con las advertencias en pantalla y con el aviso permanente de la barra
+lateral.
+
+  ┌─ Cómo explicarlo en una defensa: ¿cómo saben que los resultados son
+  │  correctos?
+  │ "De tres maneras. Primero, 33 pruebas automáticas con los vectores
+  │ oficiales de FIPS-197 y FIPS 180-4. Segundo, en tiempo de ejecución la
+  │ aplicación compara su resultado con el de Web Crypto, la criptografía del
+  │ navegador, y lo muestra en pantalla. Tercero, en AES cada bloque de la
+  │ simulación paso a paso se compara con un cifrado directo; si no coincide,
+  │ no se muestra."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+11. DECISIONES DE DISEÑO Y JUSTIFICACIÓN TÉCNICA
+================================================================================
+
+La tabla resume las decisiones identificables en el código. Las
+justificaciones de las decisiones marcadas como [Documentado en el código] en
+capítulos anteriores (separación en capas, pasos precalculados, S-Box
+calculada, getRandomValues, advertencia sobre ECB) provienen de comentarios
+del proyecto o del README; las demás son interpretaciones razonables de la
+implementación.
+
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Decisión tomada          | Justificación                  | Beneficio para CriptoLab       | Alternativa posible        |
++==========================+================================+================================+============================+
+| Aplicación 100 % en el   | Los cálculos son locales y     | Se abre con un servidor        | Backend en Node, Python o  |
+| navegador, sin servidor  | pequeños; no hay datos que     | estático, funciona sin         | Java que haga los cálculos |
+| ni base de datos.        | guardar ni compartir.          | conexión a un backend y ningún | (más infraestructura sin   |
+|                          |                                | dato del usuario sale de su    | beneficio didáctico).      |
+|                          |                                | equipo.                        |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| TypeScript en modo       | Los algoritmos mezclan bytes   | El compilador detecta antes de | JavaScript con JSDoc       |
+| estricto en lugar de     | (number), enteros grandes      | ejecutar un bigint usado como  | (menos verificación) o     |
+| JavaScript puro.         | (bigint) y estados de 16       | number o un paso sin un campo  | validaciones manuales en   |
+|                          | celdas; confundirlos produce   | obligatorio.                   | tiempo de ejecución.       |
+|                          | errores silenciosos.           |                                |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| React con componentes    | La interfaz repite las mismas  | Una vez escrito, StateMatrix   | Vue o Svelte (equivalentes |
+| funcionales.             | piezas (celdas de byte,        | sirve para el estado, la clave | en capacidad) o manipular  |
+|                          | matrices, paneles) con datos   | de ronda y el resultado; la    | el DOM a mano (más código  |
+|                          | distintos en cada paso.        | pantalla se actualiza sola al  | y más errores).            |
+|                          |                                | cambiar el paso.               |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Vite como herramienta de | Se necesita compilar           | Arranque casi inmediato en     | Webpack (configuración más |
+| construcción.            | TypeScript/JSX, resolver el    | desarrollo, recarga en         | extensa) o Create React    |
+|                          | alias @ y dividir el código en | caliente y una compilación     | App (discontinuado).       |
+|                          | partes.                        | optimizada en dist/.           |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Tailwind CSS con una     | Cada tipo de operación         | Los colores se definen una vez | CSS tradicional o CSS      |
+| paleta propia (ink,      | necesita un color constante en | en tailwind.config.js y se     | Modules (más archivos) o   |
+| accent).                 | toda la aplicación.            | reutilizan en tones.ts; no hay | una biblioteca de          |
+|                          |                                | hojas de estilo dispersas.     | componentes como MUI       |
+|                          |                                |                                | (estética difícil de       |
+|                          |                                |                                | adaptar).                  |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Zustand para el estado   | Varias pantallas y componentes | Stores pequeños y legibles,    | Context de React           |
+| compartido.              | necesitan los mismos datos     | sin "prop drilling"; el store  | (re-renderiza de más) o    |
+|                          | (clave RSA, paso actual, nivel | genérico de simulación se      | Redux Toolkit (más         |
+|                          | de explicación).               | reutiliza en AES, SHA y RSA.   | ceremonia para este        |
+|                          |                                |                                | tamaño).                   |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Separar engine/ (lógica) | Un error de cálculo y un error | Los motores se prueban sin     | Calcular dentro de los     |
+| de components/           | de presentación son problemas  | navegador con Vitest y la      | componentes (imposible de  |
+| (interfaz) en cada       | distintos que conviene aislar. | interfaz nunca recalcula       | probar por separado y      |
+| módulo.                  |                                | criptografía.                  | fácil de desincronizar).   |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Precalcular todos los    | Retroceder en un algoritmo de  | Avanzar, retroceder, saltar de | Calcular cada paso al      |
+| pasos de la simulación y | cifrado exigiría deshacer      | ronda o arrastrar la barra es  | avanzar (retroceder sería  |
+| navegar solo con un      | operaciones.                   | instantáneo y siempre muestra  | complejo y propenso a      |
+| índice.                  |                                | el mismo valor para el mismo   | errores).                  |
+|                          |                                | paso.                          |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Implementar AES, RSA y   | Web Crypto entrega solo el     | Se puede mostrar cada          | Usar una biblioteca como   |
+| SHA desde cero en lugar  | resultado final; no expone     | SubBytes, cada ronda de SHA y  | CryptoJS o node-forge      |
+| de usar solo Web Crypto  | estados intermedios.           | cada multiplicación modular    | (tampoco expone los pasos  |
+| API.                     |                                | con valores reales.            | internos de forma          |
+|                          |                                |                                | didáctica).                |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Verificar los resultados | Una implementación propia      | El usuario ve en pantalla si   | Confiar solo en la         |
+| educativos contra Web    | puede tener errores; hace      | el resultado coincide con el   | implementación propia (sin |
+| Crypto API y vectores    | falta una referencia           | motor del navegador; las       | evidencia de corrección).  |
+| oficiales.               | independiente.                 | pruebas usan FIPS-197 y FIPS   |                            |
+|                          |                                | 180-4.                         |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Derivar la S-Box y las   | Copiar 256 o 80 valores a mano | El código muestra de dónde     | Tablas literales copiadas  |
+| constantes de SHA-2 por  | es una fuente típica de        | salen las constantes y las     | del estándar (más rápidas  |
+| cálculo en lugar de      | errores de transcripción.      | pruebas confirman que          | de escribir, pero opacas y |
+| copiarlas en tablas.     |                                | coinciden con el estándar.     | sin explicación).          |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Usar BigInt para RSA y   | Los number de JavaScript       | Un único motor SHA-2 genérico  | Bibliotecas de enteros     |
+| para las palabras de     | pierden precisión por encima   | sirve para 32 y 64 bits; RSA   | grandes (bn.js) o dividir  |
+| SHA-2.                   | de 2^53; SHA-512 usa palabras  | admite módulos de hasta 40     | cada palabra en dos        |
+|                          | de 64 bits.                    | dígitos sin errores.           | mitades de 32 bits.        |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| crypto.getRandomValues   | Math.random no es              | Las claves AES de ejemplo y    | Math.random (predecible) o |
+| para claves y primos;    | criptográficamente seguro.     | los primos RSA aleatorios      | un generador propio.       |
+| nunca Math.random.       |                                | provienen de la fuente de      |                            |
+|                          |                                | entropía del sistema.          |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Modo RSA real separado   | El RSA de libro con números    | El usuario ve la diferencia    | Mostrar solo RSA de libro  |
+| (RSA-OAEP con Web        | chicos enseña la matemática    | entre la demostración y un     | (transmitiría una idea     |
+| Crypto) del modo         | pero es inseguro.              | esquema real con relleno       | incorrecta de cómo se usa  |
+| educativo.               |                                | aleatorio y clave no           | RSA).                      |
+|                          |                                | extraíble.                     |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Colores semánticos por   | En AES y SHA intervienen       | El usuario reconoce de un      | Un único color de acento   |
+| operación (clave =       | muchos valores a la vez; el    | vistazo qué es dato, clave o   | (más sobrio, pero menos    |
+| ámbar, sustitución =     | color indica su papel.         | resultado en cualquier         | informativo).              |
+| violeta, etc.).          |                                | pantalla.                      |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Animaciones breves con   | Algunos cambios (ShiftRows,    | ShiftRows muestra las celdas   | Transiciones CSS puras     |
+| Framer Motion,           | aparición de valores) se       | desplazándose; MotionConfig    | (más difíciles de          |
+| respetando "reducir      | entienden mejor viendo el      | reducedMotion="user" respeta   | coordinar) o sin           |
+| movimiento".             | movimiento.                    | la preferencia del sistema.    | animación.                 |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Navegación por fragmento | Se necesitan 18 pantallas      | Funcionan los botones          | React Router (dependencia  |
+| de URL (#/ruta) con un   | enlazables sin servidor que    | Atrás/Adelante y cada          | adicional) o navegación    |
+| store propio.            | reescriba rutas.               | simulador tiene su enlace, sin | sin URL (no se puede       |
+|                          |                                | agregar una biblioteca de      | compartir ni volver        |
+|                          |                                | rutas.                         | atrás).                    |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Carga diferida (lazy) de | Cada módulo tiene bastante     | La carga inicial es menor;     | Un único paquete con todo  |
+| cada página.             | código propio que no hace      | cada simulador se descarga     | el código (carga inicial   |
+|                          | falta al abrir el inicio.      | cuando se visita.              | más pesada).               |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Explicaciones en dos     | El público va desde quien      | El mismo paso sirve para ambos | Un único texto fijo        |
+| niveles (Sencilla /      | recién empieza hasta quien     | perfiles y la explicación cita | (demasiado simple para     |
+| Técnica) generadas con   | conoce la matemática.          | los bytes concretos del        | unos o demasiado técnico   |
+| los valores reales.      |                                | cálculo.                       | para otros).               |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+| Límites de tamaño de     | Una simulación con miles de    | La simulación sigue siendo     | Sin límites (riesgo de     |
+| entrada (256 bytes AES,  | pasos no se puede seguir y     | legible y fluida.              | pantallas inmanejables y   |
+| 1024 bytes SHA, 64 bytes | consume memoria.               |                                | lentitud).                 |
+| RSA texto).              |                                |                                |                            |
++--------------------------+--------------------------------+--------------------------------+----------------------------+
+
+  ┌─ Cómo explicarlo en una defensa: la decisión más importante ──────────────
+  │ "Calcular primero y mostrar después. El motor ejecuta el algoritmo
+  │ completo y guarda cada estado; la interfaz solo recorre esa lista. Eso
+  │ permite retroceder sin deshacer operaciones, probar los motores sin
+  │ interfaz y verificar el resultado contra Web Crypto antes de que el
+  │ usuario llegue al final."
+  └───────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+12. LIMITACIONES Y POSIBLES MEJORAS
+================================================================================
+
+12.1 Limitaciones técnicas
+--------------------------
+
+  - AES solo en modo ECB; no se simulan CBC, CTR ni GCM.
+  - Tamaños de entrada limitados (256 bytes en AES, 1024 en SHA, 64 bytes de
+    texto en RSA) para que la simulación sea legible.
+  - Solo SHA-256 y SHA-512; no hay SHA-1, SHA-3 ni otras funciones.
+  - El estado no se conserva al recargar la página (los stores viven en
+    memoria; no se usa almacenamiento local).
+  - Las fuentes se cargan desde Google Fonts; sin conexión se usan fuentes
+    del sistema.
+  - Web Crypto requiere HTTPS o localhost; abierta de otra forma, las
+    verificaciones no se ejecutan (la aplicación lo informa).
+  - En navegadores basados en Chromium, AES-192 se verifica con el vector
+    oficial en lugar de con Web Crypto.
+  - Interfaz solo en español.
+
+12.2 Limitaciones educativas
+----------------------------
+
+  - No hay ejercicios, autoevaluación ni seguimiento del progreso.
+  - No se demuestran ataques (por ejemplo, el patrón visible de ECB o la
+    factorización de un n chico).
+  - El descifrado AES usa el "cifrado inverso" de FIPS-197; no se muestra la
+    variante "equivalente" que usan algunas implementaciones.
+  - No se realizó una evaluación con estudiantes.
+
+12.3 Limitaciones de seguridad (por diseño)
+-------------------------------------------
+
+  - La implementación educativa no es de tiempo constante ni protege contra
+    canales laterales.
+  - El RSA educativo no usa relleno y usa números chicos.
+  - Las claves se muestran en pantalla.
+  - Por todo esto, la aplicación advierte que no debe usarse para proteger
+    información real. El único componente apto para cifrado real es el
+    laboratorio RSA-OAEP, y lo es porque delega todo en el navegador.
+
+12.4 Funcionalidades que podrían incorporarse
+---------------------------------------------
+
+(Propuestas; ninguna está implementada.)
+
+  - Modos de operación AES (CBC, CTR, GCM) con la cadena de bloques visible, y
+    una demostración del patrón que deja ECB en una imagen.
+  - Firma digital RSA y cifrado híbrido (AES + RSA) paso a paso.
+  - SHA-3 / Keccak y HMAC.
+  - Ejercicios con autocorrección ("calculá este SubBytes a mano").
+  - Guardar la configuración en el almacenamiento local y compartir una
+    simulación por enlace.
+  - Pruebas de interfaz y de extremo a extremo, un analizador de código e
+    integración continua.
+  - Pruebas sistemáticas en Firefox y Safari.
+  - Traducción a otros idiomas.
+  - Una evaluación con estudiantes para medir el aporte didáctico.
+
+
+================================================================================
+13. CONCLUSIÓN
+================================================================================
+
+Cómo se construyó. CriptoLab es una aplicación web de una sola página,
+escrita en TypeScript con React y empaquetada con Vite, que funciona por
+completo en el navegador. Se organizó en un módulo por algoritmo (AES, RSA,
+SHA), cada uno con su motor, su estado, sus componentes y sus tipos, más un
+conjunto de piezas compartidas.
+
+Qué tecnologías lo hicieron posible. React permitió construir la interfaz con
+componentes reutilizables (un byte, una matriz, un panel de explicación);
+Zustand, compartir el estado y reutilizar un mismo reproductor de
+simulaciones; Tailwind, definir una paleta con significado; Framer Motion,
+animar lo que se entiende mejor en movimiento; KaTeX, mostrar las fórmulas
+con los valores reales; SVG, dibujar el diagrama de RSA; BigInt, operar con
+enteros grandes; y la Web Crypto API, verificar los resultados y ofrecer un
+modo RSA real.
+
+Cómo se integraron. El motor de cada algoritmo ejecuta el cálculo completo y
+devuelve una lista de pasos con el estado antes y después y una explicación.
+Un store guarda esa lista; los componentes la recorren con un índice. En
+paralelo, la Web Crypto API calcula el resultado por su cuenta y la
+aplicación muestra si coinciden.
+
+Qué decisiones fueron fundamentales.
+  - Separar el cálculo de la presentación.
+  - Precalcular todos los pasos y navegar con un índice.
+  - Implementar los algoritmos desde cero para poder mostrarlos, y
+    verificarlos contra una referencia independiente.
+  - Derivar las constantes (S-Box, constantes de SHA) en lugar de copiarlas.
+  - Separar claramente el modo educativo del modo real.
+
+Qué valor aporta. Hace visible lo que una herramienta criptográfica oculta:
+cada sustitución, cada desplazamiento, cada ronda, cada multiplicación
+modular, con valores verificables y explicaciones en dos niveles. Al mismo
+tiempo, enseña sus propios límites: advierte por qué ECB y el RSA de libro no
+son seguros y muestra cómo se ve la alternativa real.
+
+Qué conocimientos de ingeniería de software se aplicaron. Arquitectura en
+capas y separación de responsabilidades; diseño basado en componentes;
+gestión de estado centralizada; programación con tipos estáticos; funciones
+puras y pruebas automáticas contra vectores oficiales; verificación contra un
+oráculo independiente; validación de entradas y manejo de errores;
+accesibilidad y diseño adaptable; y optimización de carga mediante división
+del código.
+
+
+================================================================================
+ANEXO A. PREGUNTAS QUE PODRÍAN REALIZAR DURANTE LA DEFENSA
+================================================================================
+
+P1. ¿Qué es CriptoLab y para qué sirve?
+R:  Es una aplicación web educativa que ejecuta AES, RSA y SHA-2 con valores
+    reales y permite recorrer cada paso intermedio con explicaciones. Sirve
+    para entender cómo funcionan por dentro, no para proteger información.
+
+P2. ¿Por qué eligieron React?
+R:  Porque la interfaz se arma con las mismas piezas (bytes, matrices,
+    paneles) que cambian de valor en cada paso. React permite escribir esas
+    piezas una vez como componentes y actualiza la pantalla automáticamente
+    cuando cambia el paso.
+
+P3. ¿Qué diferencia hay entre JavaScript y TypeScript?
+R:  TypeScript es JavaScript con tipos. El navegador ejecuta JavaScript;
+    TypeScript se usa al programar para que el compilador detecte errores,
+    por ejemplo pasar un entero grande donde se esperaba un byte. Antes de
+    ejecutar, los tipos se eliminan.
+
+P4. ¿Para qué sirve Vite? ¿No alcanza con React?
+R:  Hacen cosas distintas. React define cómo se construye la interfaz. Vite
+    traduce TypeScript y JSX a JavaScript, empaqueta el código, lo sirve
+    durante el desarrollo con recarga instantánea y genera la versión final
+    en dist/.
+
+P5. ¿Qué es un componente?
+R:  Una pieza de interfaz reutilizable que recibe datos (props) y devuelve lo
+    que se muestra. Por ejemplo, ByteCell dibuja un byte; StateMatrix usa 16
+    ByteCell para la matriz de AES.
+
+P6. ¿Qué significa gestionar el estado y por qué usaron Zustand?
+R:  El estado es lo que la aplicación recuerda: mensaje, clave, paso actual.
+    Zustand permite guardarlo en stores que varios componentes leen sin
+    pasarse los datos de mano en mano. Es más simple que Redux y, a
+    diferencia de Context, solo actualiza los componentes cuyo dato cambió.
+
+P7. ¿Por qué usaron la Web Crypto API si implementaron los algoritmos?
+R:  Porque Web Crypto solo da el resultado final y nosotros necesitamos los
+    pasos intermedios para mostrarlos. La usamos como referencia
+    independiente para verificar que nuestro resultado es correcto, y para el
+    modo RSA-OAEP real.
+
+P8. ¿Por qué separaron la lógica de los algoritmos de la interfaz?
+R:  Para poder probar los algoritmos sin interfaz, para que la interfaz no
+    pueda alterar un valor y para aislar errores: un valor incorrecto es un
+    problema del motor; algo que se ve mal, de la interfaz.
+
+P9. ¿Cómo garantizan que lo que se muestra paso a paso es el AES real?
+R:  Los pasos son los estados que produce el propio motor. Además, al final
+    de cada bloque se recalcula con el cifrado directo y, si no coincide, se
+    lanza un error. Y el resultado se compara con Web Crypto.
+
+P10. ¿Qué diferencia hay entre cifrado y hash?
+R:  El cifrado es reversible con la clave; el hash no tiene clave ni vuelta
+    atrás, y produce un resumen de longitud fija que sirve para verificar
+    integridad.
+
+P11. ¿Por qué AES está en modo ECB si es inseguro?
+R:  Porque procesa cada bloque por separado y eso permite mostrarlo con
+    claridad. La aplicación lo advierte en la explicación y en un aviso, y
+    aclara que en la práctica se usan modos como GCM.
+
+P12. ¿Cómo verifican AES con Web Crypto si Web Crypto no tiene ECB?
+R:  Ciframos cada bloque por separado con AES-CBC y un vector de
+    inicialización en cero: el primer bloque de CBC con IV nulo es
+    exactamente el cifrado AES del bloque.
+
+P13. ¿Qué pasa con AES-192?
+R:  Los navegadores basados en Chromium no admiten claves AES de 192 bits en
+    Web Crypto. En ese caso la aplicación valida la implementación con el
+    vector oficial de FIPS-197 para AES-192 y lo informa.
+
+P14. ¿De dónde sale la S-Box? ¿La copiaron?
+R:  No: se calcula con su definición matemática, el inverso en GF(2^8)
+    seguido de una transformación afín. Las pruebas verifican que coincide
+    con la del estándar.
+
+P15. ¿Qué es GF(2^8) y por qué aparece en MixColumns?
+R:  Es un campo de 256 elementos donde sumar es XOR y multiplicar por 2 es
+    desplazar y reducir con 0x1b (xtime). MixColumns multiplica cada columna
+    por una matriz fija con esa aritmética, para que cada byte de salida
+    dependa de toda la columna.
+
+P16. ¿Cómo se genera la clave RSA en la aplicación?
+R:  Se eligen o generan dos primos p y q, se calcula n = p·q y φ(n) =
+    (p−1)(q−1), se elige e coprimo con φ(n) (por defecto se prueba 65537) y
+    se calcula d como inverso de e módulo φ(n) con Euclides extendido.
+
+P17. ¿Cómo comprueban que un número es primo?
+R:  Con el test de Miller-Rabin con las 12 primeras bases primas, que es
+    determinista para números menores que 3,18·10^23; eso cubre todos los
+    primos que genera la aplicación.
+
+P18. ¿Por qué el RSA educativo no es seguro?
+R:  Usa números chicos, no tiene relleno (es determinista) y en modo texto
+    cifra byte a byte, como un cifrado por sustitución. La aplicación lo
+    advierte y ofrece al lado un modo real con RSA-OAEP de 2048 bits o más.
+
+P19. ¿Qué es la exponenciación modular rápida?
+R:  Calcular M^e mod n sin obtener el número completo: se recorre el
+    exponente en binario y, por cada bit, se eleva al cuadrado módulo n y, si
+    el bit es 1, se multiplica por M módulo n. Para e = 17 alcanzan 5
+    cuadrados y 2 multiplicaciones.
+
+P20. ¿Por qué cifrar dos veces lo mismo con RSA-OAEP da resultados distintos?
+R:  Porque OAEP agrega bytes aleatorios antes de cifrar. Así un atacante no
+    puede comparar cifrados para deducir el mensaje, cosa que sí ocurre en el
+    RSA de libro.
+
+P21. ¿Qué es la clave "no extraíble" del laboratorio RSA-OAEP?
+R:  Una clave que el navegador genera y guarda internamente; el código de la
+    aplicación puede pedirle que descifre, pero no puede leerla. Se descarta
+    al salir.
+
+P22. ¿Cómo funciona el relleno de SHA-256?
+R:  Se agrega un bit 1, luego ceros, y al final la longitud del mensaje en
+    bits en 64 bits, de modo que el total sea múltiplo de 512 bits. Para
+    "abc" queda un solo bloque de 64 bytes.
+
+P23. ¿Qué hacen los registros A-H y las 64 rondas?
+R:  Son el estado interno. En cada ronda se combinan con una palabra del
+    mensaje expandido y una constante, mediante rotaciones, Ch, Maj y sumas
+    módulo 2^32, y se desplazan. Al final se suman al hash anterior.
+
+P24. ¿Por qué usaron BigInt?
+R:  Porque los números de JavaScript solo son exactos hasta 2^53. RSA usa
+    enteros más grandes y SHA-512 usa palabras de 64 bits. Con BigInt un
+    único motor sirve para SHA-256 y SHA-512.
+
+P25. ¿Cómo se generan los números aleatorios?
+R:  Con crypto.getRandomValues, la fuente segura del navegador; nunca con
+    Math.random. Para elegir un número en un rango se usa muestreo por
+    rechazo, que evita que unos valores salgan más que otros.
+
+P26. ¿Por qué precalculan todos los pasos?
+R:  Porque retroceder en un algoritmo de cifrado exigiría deshacer
+    operaciones. Al tener todos los estados guardados, avanzar o retroceder es
+    cambiar un índice: instantáneo y siempre consistente.
+
+P27. ¿Qué pruebas tiene el proyecto?
+R:  33 pruebas automáticas con Vitest: 17 de AES, 8 de SHA y 8 de RSA,
+    basadas en los vectores oficiales de FIPS-197 y FIPS 180-4 y en el
+    ejemplo clásico de RSA. No hay pruebas automáticas de la interfaz.
+
+P28. ¿Qué es el efecto avalancha y cómo lo muestran?
+R:  Que un cambio mínimo en la entrada cambie cerca de la mitad de los bits
+    del hash. La página compara dos mensajes, marca en una grilla los bits
+    distintos y muestra la proporción; un botón cambia un carácter al azar.
+
+P29. ¿La aplicación envía datos a algún servidor?
+R:  No hay un servidor propio: todos los cálculos son locales. La única
+    descarga externa que hace la página son las fuentes tipográficas desde
+    Google Fonts.
+
+P30. ¿Qué mejorarían?
+R:  Agregar modos de operación AES (CBC, GCM) y la demostración del patrón de
+    ECB, firma digital y cifrado híbrido, ejercicios con autocorrección,
+    pruebas de interfaz y una evaluación con estudiantes.
+
+
+================================================================================
+ANEXO B. MAPA RÁPIDO DE ARCHIVOS
+================================================================================
+
+  Para responder sobre...           Mirar...
+  --------------------------------  -----------------------------------------
+  Punto de entrada                  src/main.tsx, src/App.tsx
+  Pantallas y navegación            src/components/navigation/routes.ts,
+                                    src/stores/navigationStore.ts
+  Reproductor de simulaciones       src/stores/createSimulationStore.ts,
+                                    src/components/controls/SimulationControls.tsx,
+                                    src/hooks/useAutoPlay.ts,
+                                    src/hooks/useKeyboardStepping.ts
+  Contrato de un paso               src/types/simulation.ts
+  AES: matemática                   src/modules/aes/engine/galoisField.ts,
+                                    constants.ts, transformations.ts
+  AES: rondas y pasos               src/modules/aes/engine/cipher.ts,
+                                    simulation.ts, explanations.ts
+  AES: expansión de clave           src/modules/aes/engine/keyExpansion.ts,
+                                    components/KeyExpansionView.tsx
+  AES: verificación                 src/modules/aes/store/aesStore.ts
+                                    (verifyWithWebCrypto)
+  RSA: aritmética                   src/modules/rsa/engine/math.ts
+  RSA: primos                       src/modules/rsa/engine/primes.ts
+  RSA: claves y mensajes            src/modules/rsa/engine/keygen.ts,
+                                    keygenSteps.ts, messages.ts
+  RSA-OAEP real                     src/modules/rsa/components/RealRsaLab.tsx,
+                                    src/services/crypto/webCrypto.ts
+  SHA: constantes                   src/modules/sha/engine/constants.ts
+  SHA: motor y pasos                src/modules/sha/engine/sha2.ts, steps.ts
+  Conversiones de datos             src/utils/bytes.ts
+  Aleatoriedad                      src/services/crypto/random.ts
+  Colores y estilos                 tailwind.config.js, src/styles/index.css,
+                                    src/components/common/tones.ts
+  Pruebas                           src/modules/*/engine/*.test.ts
+  Configuración                     package.json, vite.config.ts, tsconfig.json
+
+================================================================================
+                                FIN DEL DOCUMENTO
+================================================================================
