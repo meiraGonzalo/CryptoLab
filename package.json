@@ -4,7 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Laboratorio visual e interactivo para aprender criptografía: AES, RSA y SHA-2 paso a paso.",
+  "author": "CriptoLab",
+  "main": "electron/main.cjs",
   "scripts": {
+    "desktop": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win",
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
@@ -12,7 +16,39 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "build": {
+    "appId": "app.criptolab.desktop",
+    "productName": "CriptoLab",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!node_modules/**/*"
+    ],
+    "win": {
+      "icon": "electron/icon.png",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "CriptoLab",
+      "artifactName": "CriptoLab-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "CriptoLab-Portable-${version}.${ext}"
+    }
+  },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "framer-motion": "^11.11.17",
     "katex": "^0.16.11",
     "lucide-react": "^0.460.0",
@@ -27,6 +63,8 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "electron": "^45.3.3",
+    "electron-builder": "^26.18.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "~5.6.3",

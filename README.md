@@ -19,6 +19,20 @@ npm run preview    # sirve la compilación de producción
 
 La aplicación funciona por completo en el navegador: no hay backend ni base de datos.
 
+### Versión de escritorio (Windows)
+
+La misma compilación se empaqueta con Electron (`electron/main.cjs` abre `dist/index.html` en una ventana propia):
+
+```bash
+npm run desktop    # compila y abre la app en una ventana de escritorio
+npm run dist:win   # compila y genera en release/ el instalador y la versión portable
+```
+
+- `release/CriptoLab-Setup-<versión>.exe`: instalador con acceso directo en el escritorio.
+- `release/CriptoLab-Portable-<versión>.exe`: ejecutable único que no requiere instalación.
+
+Las fuentes (Inter y JetBrains Mono) están incluidas en el paquete, así que la versión de escritorio funciona sin conexión. Los ejecutables no están firmados digitalmente: Windows SmartScreen puede mostrar una advertencia la primera vez («Más información» → «Ejecutar de todas formas»).
+
 ## Contenido
 
 | Sección | Qué permite hacer |
